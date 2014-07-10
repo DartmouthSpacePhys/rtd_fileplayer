@@ -108,10 +108,12 @@ int parse_opt(struct player_opt *options, int argc, char **argv) {
       break;
     case 'p':
       pn = strtok(optarg, ",");
-      ports[i] = strtoul(pn, NULL, 0);
+      //      ports[i] = strtoul(pn, NULL, 0);
+      ports[i] = pn;
       while ((pn = strtok(NULL , ",")) != NULL) {
 	i++;
-	ports[i] = strtoul(pn, NULL, 0);
+	//	ports[i] = strtoul(pn, NULL, 0);
+	ports[i] = pn;
       }
       //      qsort(ports, i+1, sizeof(int), int_cmp); // Sort port list
       int j;
