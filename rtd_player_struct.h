@@ -13,11 +13,11 @@
 #include "defaults.h"
 
 /* Program options */
-struct rtd_player_opt {
+struct player_opt {
   int acqsize;
   int maxacq;
-  int ports[MAXPORTS];
-  int mport;
+  char *ports[MAXPORTS];
+  int num_files;
   bool oldsport;
   char *prefix;
   char *outdir;
@@ -40,9 +40,9 @@ struct colonel_frame {
 };
 
 struct rtd_player_ptargs {
-  struct rtd_player_opt o;
+  struct player_opt o;
 
-  int np;
+  char *np;
   time_t time;
   bool *running;
   int retval;

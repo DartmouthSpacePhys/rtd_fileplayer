@@ -1,15 +1,11 @@
 /* rtd_player
- *  ->A Frankenstein of code written by SMH as well as older code written
- *    by MPD for acquisition through QuickUSB
+ *  ->A shameless and complete bastardization of fscc_acq, 
+ *      which was already an insult to its parent, qusb_acq
+ *    
+ *    
  *
- * se creó y encargó : Jun 3, 2014
+ * se creó y encargó : Jul 10 (Sarah's birthday), 2014
  *
- *
- */
-
-/*
- *Quehaceres: Need to handle different sizes present for X-Sync mode
- *Search for "//!!!" to find things that need to be changed or considered
  *
  */
 
@@ -31,29 +27,32 @@
 #include <math.h>
 #include <termios.h>
 
-#include "rtd_player_errors.h"
 #include "rtd_player_helpers.h"
 #include "rtd_player.h"
 
+#define EEPP_FILE 8
+#define EEPP_THREAD 9
 #define MIN_BYTES_READ 100
 
 static bool running = true;
 
 int main(int argc, char **argv)
 {
-  struct rtd_player_opt o;
+  struct player_opt o;
   int e;  
 
   init_opt(&o);
   parse_opt(&o, argc, argv);
 
+  
+
   signal(SIGINT, do_depart);
 
-  rtd_player_mport(o);
+  rtd_play(o);
 
 }
 
-void rtd_player_mport(struct rtd_player_opt o) {
+void rtd_play(struct player_opt o) {
   
   time_t pg_time;
   int tret, ret, rtdsize = 0;
@@ -73,11 +72,11 @@ void rtd_player_mport(struct rtd_player_opt o) {
   pg_time = time(NULL);
 
 
-  data_threads = malloc(o.mport * sizeof(pthread_t));
-  printf("o.mport is currently %i\n",o.mport);
-  rtdlocks = malloc(o.mport * sizeof(pthread_mutex_t));
-  thread_args = malloc(o.mport * sizeof(struct rtd_player_ptargs));
-  rtdframe = malloc(o.mport * sizeof(short int *));
+  data_threads = malloc(o.num_files * sizeof(pthread_t));
+  printf("o.num_files is currently %i\n",o.num_files);
+  rtdlocks = malloc(o.num_files * sizeof(pthread_mutex_t));
+  thread_args = malloc(o.num_files * sizeof(struct rtd_player_ptargs));
+  rtdframe = malloc(o.num_files * sizeof(short int *));
   
   if (o.dt > 0) {
     printf("RTD");
@@ -89,13 +88,13 @@ void rtd_player_mport(struct rtd_player_opt o) {
     else printf("/%iavg)", o.rtdavg);
     printf("...");
     
-    rtdout = malloc(o.mport * rtdsize);
+    rtdout = malloc(o.num_files * rtdsize);
     
     if ((rtdframe == NULL) || (rtdout == NULL)) {
       printe("RTD mallocs failed.\n");
     }
     
-    for (int i = 0; i < o.mport; i++) {
+    for (int i = 0; i < o.num_files; i++) {
       rtdframe[i] = malloc(rtdsize);
     }
     
@@ -112,7 +111,7 @@ void rtd_player_mport(struct rtd_player_opt o) {
     if ((fstat(rfd, &sb) == -1) || (!S_ISREG(sb.st_mode))) {
       printe("Improper rtd file.\n"); return;
     }
-    int mapsize = o.mport*rtdsize + 100;
+    int mapsize = o.num_files*rtdsize + 100;
     char *zeroes = malloc(mapsize);
     memset(zeroes, 0, mapsize);
     ret = write(rfd, zeroes, mapsize);
@@ -128,10 +127,10 @@ void rtd_player_mport(struct rtd_player_opt o) {
     /*
      * Set up basic RTD header
      */
-    header.num_read = o.rtdsize*o.mport;
+    header.num_read = o.rtdsize*o.num_files;
     sprintf(header.site_id,"%s","RxDSP Woot?");
     header.hkey = 0xF00FABBA;
-    header.num_channels=o.mport;
+    header.num_channels=o.num_files;
     header.channel_flags=0x0F;
     header.num_samples=o.rtdsize;
 //!!! DOES THIS NEED TO BE CHANGED TO 960000?
@@ -145,15 +144,15 @@ void rtd_player_mport(struct rtd_player_opt o) {
   /*
    * Set up and create the write thread for each serial port.
    */
-  for (int i = 0; i < o.mport; i++) {
+  for (int i = 0; i < o.num_files; i++) {
     thread_args[i].np = o.ports[i];
     ret = pthread_mutex_init(&rtdlocks[i], NULL);
     if (ret) {
       printe("RTD mutex init failed: %i.\n", ret); exit(EEPP_THREAD);
     }
     
-    rtd_player_log("port %i...", o.ports[i]);
-    printf("port %i...", o.ports[i]); fflush(stdout);
+    rtd_log("file %s...", o.ports[i]);
+    printf("file %s...", o.ports[i]); fflush(stdout);
     thread_args[i].o = o;
     thread_args[i].retval = 0;
     thread_args[i].running = &running;
@@ -164,15 +163,15 @@ void rtd_player_mport(struct rtd_player_opt o) {
     ret = pthread_create(&data_threads[i], NULL, rtd_player_data_pt, (void *) &thread_args[i]);
     
     if (ret) {
-      rtd_player_log("Thread %i failed!: %i.\n", i, ret); exit(EEPP_THREAD);
+      rtd_log("Thread %i failed!: %i.\n", i, ret); exit(EEPP_THREAD);
       printe("Thread %i failed!: %i.\n", i, ret); exit(EEPP_THREAD);
     } else active_threads++;
   }
   
-  rtd_player_log("initalization done.\n");
+  rtd_log("initalization done.\n");
   printf("done.\n"); fflush(stdout);
   
-  if (o.debug) printf("Size of header: %li, rtdsize: %i, o.mport: %i.\n", sizeof(header), rtdsize, o.mport);
+  if (o.debug) printf("Size of header: %li, rtdsize: %i, o.num_files: %i.\n", sizeof(header), rtdsize, o.num_files);
 
 
   /*
@@ -188,7 +187,7 @@ void rtd_player_mport(struct rtd_player_opt o) {
 	/*
 	 * Lock every rtd mutex, then just copy in the lock, for speed.
 	 */
-	for (int i = 0; i < o.mport; i++) {
+	for (int i = 0; i < o.num_files; i++) {
 	  pthread_mutex_lock(&rtdlocks[i]);
 	  memmove(&rtdout[i*o.rtdsize], rtdframe[i], rtdsize);
 	  pthread_mutex_unlock(&rtdlocks[i]);
@@ -199,7 +198,7 @@ void rtd_player_mport(struct rtd_player_opt o) {
 	header.averages = o.rtdavg;
 
 	memmove(rmap, &header, sizeof(struct header_info));
-	memmove(rmap+102, rtdout, rtdsize*o.mport);
+	memmove(rmap+102, rtdout, rtdsize*o.num_files);
 
 	then = now;
       }
@@ -209,14 +208,14 @@ void rtd_player_mport(struct rtd_player_opt o) {
     /*
      * Check for any threads that are joinable (i.e. that have quit).
      */
-    for (int i = 0; i < o.mport; i++) {
+    for (int i = 0; i < o.num_files; i++) {
       ret = pthread_tryjoin_np(data_threads[i], (void *) &tret);
 
       tret = thread_args[i].retval;
       if (ret == 0) {
 	active_threads--;
-	if (tret) printf("port %i error: %i...", o.ports[i], tret);
-	else printf("port %i clean...", o.ports[i]);
+	if (tret) printf("file %s error: %i...", o.ports[i], tret);
+	else printf("file %s clean...", o.ports[i]);
 
 	if (running) {
 	  /*
@@ -227,13 +226,13 @@ void rtd_player_mport(struct rtd_player_opt o) {
 	  ret = pthread_create(&data_threads[i], NULL, rtd_player_data_pt, (void *) &thread_args[i]);
 
 	  if (ret) {
-	    rtd_player_log("Port %i revive failed!: %i.\n", i, ret); exit(EEPP_THREAD);
+	    rtd_log("Port %i revive failed!: %i.\n", i, ret); exit(EEPP_THREAD);
 	    printe("Port %i revive failed!: %i.\n", i, ret); exit(EEPP_THREAD);
 	  } else active_threads++;
 
 	} // if (running)
       } // if (ret == 0) (thread died)
-    } // for (; i < o.mport ;)
+    } // for (; i < o.num_files ;)
 
     //!!!    usleep(50000); // Zzzz...
     usleep(5000); // Zzzz...
@@ -243,7 +242,7 @@ void rtd_player_mport(struct rtd_player_opt o) {
    * Free.  FREE!!!
    */
   if (o.dt > 0) {
-    for (int i = 0; i < o.mport; i++) {
+    for (int i = 0; i < o.num_files; i++) {
       if (rtdframe[i] != NULL) free(rtdframe[i]);
     }
     free(rtdframe); free(rtdlocks);
@@ -277,24 +276,16 @@ void *rtd_player_data_pt(void *threadarg) {
   char ostr[1024];
   struct tm ct;
   struct timeval start, now, then;
-  FILE *ofile;
 
   dataz = malloc(arg.o.acqsize);
 
-  printf("FSCC-LVDS port %i data thread init.\n", arg.np); fflush(stdout);
+  printf("FSCC-LVDS file %s data thread init.\n", arg.np); fflush(stdout);
   
   rtdbytes = arg.o.rtdsize*sizeof(short int);
   
   frames = count = wcount = 0;
   
   gmtime_r(&arg.time, &ct);
-  sprintf(ostr, "%s/%s-%04i%02i%02i-%02i%02i%02i-p%02i.data", arg.o.outdir, arg.o.prefix,
-	  ct.tm_year+1900, ct.tm_mon+1, ct.tm_mday, ct.tm_hour, ct.tm_min, ct.tm_sec, arg.np);
-  ofile = fopen(ostr, "a");
-  if (ofile == NULL) {
-    fprintf(stderr, "Failed to open output file %s.\n", ostr);
-    arg.retval = EEPP_FILE; pthread_exit((void *) &arg.retval);
-  }
    
   gettimeofday(&start, NULL);
   then = start;
@@ -307,11 +298,11 @@ void *rtd_player_data_pt(void *threadarg) {
    */
   receiving = 1;
   while (*arg.running) {
-    if (arg.o.debug) { printf("Serial port %i debug.\n", arg.np); fflush(stdout); }
+    if (arg.o.debug) { printf("Serial file %s debug.\n", arg.np); fflush(stdout); }
 
     //    usleep(sleeptime);
       
-    if (arg.o.debug) { printf("Serial port %i read data.\n", arg.np); fflush(stdout); }
+    if (arg.o.debug) { printf("Serial file %s read data.\n", arg.np); fflush(stdout); }
     
     memset(dataz, 0, arg.o.acqsize);
     if (receiving) {
@@ -349,7 +340,7 @@ void *rtd_player_data_pt(void *threadarg) {
 	
       //            printf("p%i: %i\n",arg.np,hptr[16]*65536+hptr[17]); fflush(stdout);
       //            printf("%li.",hptr-dataz);
-      //			rtd_player_log("Bad Colonel Frame Header Shift on module %i, frame %llu: %i.\n", arg.np, hptr-cframe->base, frames);
+      //			rtd_log("Bad Colonel Frame Header Shift on module %i, frame %llu: %i.\n", arg.np, hptr-cframe->base, frames);
       //    			printe("CFHS on module %i, seq %i: %i.\n", arg.np, frames, hptr-dataz);
       //            }
 	
@@ -363,7 +354,7 @@ void *rtd_player_data_pt(void *threadarg) {
 		    }
 		    }
 		    if (ret != 3) {
-		    rtd_player_log("Bad LSB Pattern Shift on module %i, frame %llu: %i.\n", arg.np, hptr-dataz, frames);
+		    rtd_log("Bad LSB Pattern Shift on module %i, frame %llu: %i.\n", arg.np, hptr-dataz, frames);
 		    printe("Bad LSBPS on module %i, frame %llu: %i.\n", arg.np, hptr-dataz, frames);
 		    }
 		    } // if debug*/
@@ -381,7 +372,7 @@ void *rtd_player_data_pt(void *threadarg) {
       // Write header and frame to disk
       //      ret = fwrite(&sync, 1, sizeof(struct frame_sync), ofile);
       //      if (ret != sizeof(struct frame_sync))
-      //	rtd_player_log("Failed to write sync, port %i: %i.", arg.np, ret);
+      //	rtd_log("Failed to write sync, file %s: %i.", arg.np, ret);
       //printf("foo"); fflush(stdout);
       //            fflush(ofile);
 	
@@ -392,7 +383,7 @@ void *rtd_player_data_pt(void *threadarg) {
 	  
       pthread_mutex_lock(arg.rlock);
       if (arg.o.debug)
-	printf("port %i rtd moving rtdbytes %i from cfb %p to rtdb %p with %u avail.\n",
+	printf("file %s rtd moving rtdbytes %i from cfb %p to rtdb %p with %u avail.\n",
 	       arg.np, rtdbytes, dataz, arg.rtdframe, count);
       memmove(arg.rtdframe, dataz, rtdbytes);
       pthread_mutex_unlock(arg.rlock);
@@ -418,11 +409,11 @@ void *rtd_player_data_pt(void *threadarg) {
     
   telapsed = now.tv_sec-start.tv_sec + 1E-6*(now.tv_usec-start.tv_usec);
     
-  rtd_player_log("Port %i read %llu bytes in %.4f s: %.4f KBps.", arg.np, count, telapsed, (count/1024.0)/telapsed);
-  printf("Port %i read %u bytes in %.4f s: %.4f KBps.\n", arg.np, count, telapsed, (count/1024.0)/telapsed);
+  rtd_log("Read %llu bytes from %s in %.4f s: %.4f KBps.", count, arg.np, telapsed, (count/1024.0)/telapsed);
+  printf("Read %u bytes from %s in %.4f s: %.4f KBps.\n",  count, arg.np, telapsed, (count/1024.0)/telapsed);
     
-  rtd_player_log("Port %i wrote %lli bytes in %.4f s: %.4f KBps.", arg.np, wcount, telapsed, (wcount/1024.0)/telapsed);
-  printf("Port %i wrote %lli bytes in %.4f s: %.4f KBps.\n", arg.np, wcount, telapsed, (wcount/1024.0)/telapsed);
+  rtd_log("Wrote %lli bytes from %s in %.4f s: %.4f KBps.", wcount, arg.np, telapsed, (wcount/1024.0)/telapsed);
+  printf("Wrote %lli bytes from %s in %.4f s: %.4f KBps.\n", wcount, arg.np, telapsed, (wcount/1024.0)/telapsed);
     
   arg.retval = EXIT_SUCCESS; pthread_exit((void *) &arg.retval);
 }

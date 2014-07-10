@@ -28,7 +28,7 @@ void printe(char *format, ...) {
 	va_end(args);
 }
 
-void rtd_player_log(char *format, ...) {
+void rtd_log(char *format, ...) {
 	static FILE *log = NULL;
     static bool init = true;
 	static time_t start_time;
@@ -73,11 +73,11 @@ void rtd_player_log(char *format, ...) {
 	va_end(args);
 }
 
-void init_opt(struct rtd_player_opt *o) {
-  memset(o, 0, sizeof(struct rtd_player_opt));
+void init_opt(struct player_opt *o) {
+  memset(o, 0, sizeof(struct player_opt));
   o->acqsize = DEF_ACQSIZE;
-  memset(o->ports, 0, sizeof(int) * MAXPORTS); o->ports[0] = 1;
-  o->mport = 1;
+  memset(o->ports, 0, sizeof(char) * MAXPORTS*50); o->ports[0] = "";
+  o->num_files = 1;
   o->oldsport = false;
   o->prefix = DEF_PREFIX;
   o->outdir = DEF_OUTDIR;
@@ -93,8 +93,8 @@ void init_opt(struct rtd_player_opt *o) {
   o->verbose = false;
 }
 
-int parse_opt(struct rtd_player_opt *options, int argc, char **argv) {
-  int ports[MAXPORTS];
+int parse_opt(struct player_opt *options, int argc, char **argv) {
+  char *ports[MAXPORTS];
   char *pn;
   int c, i = 0;
   
@@ -113,11 +113,12 @@ int parse_opt(struct rtd_player_opt *options, int argc, char **argv) {
 	i++;
 	ports[i] = strtoul(pn, NULL, 0);
       }
-      qsort(ports, i+1, sizeof(int), int_cmp); // Sort port list
+      //      qsort(ports, i+1, sizeof(int), int_cmp); // Sort port list
       int j;
       for (j = 0; j <= i; j++) {
 	options->ports[j] = ports[j];
-	options->mport = i+1;
+	options->num_files = i+1;
+	printf("Now we gots %i: %s\n",j,ports[j]);
       }
       break;
     case 'P':
