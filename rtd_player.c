@@ -39,12 +39,15 @@ static bool running = true;
 int main(int argc, char **argv)
 {
   struct player_opt o;
-  int e;  
 
   init_opt(&o);
   parse_opt(&o, argc, argv);
 
-  
+  if ( o.infiles[0] && o.infiles[0][0] == '\0' ) {
+      fprintf(stderr,"No input file provided. Use option -f on command line, or -h to see options.\n");
+      exit(EXIT_FAILURE);
+    }
+
 
   signal(SIGINT, do_depart);
 
@@ -63,7 +66,7 @@ void rtd_play(struct player_opt o) {
   short int **rtdframe, *rtdout = NULL;
   struct header_info header;
   int rfd, active_threads = 0;
-  char *rmap = NULL, lstr[1024];
+  char *rmap = NULL;
   struct stat sb;
   pthread_mutex_t *rtdlocks;
   double telapsed;
@@ -139,8 +142,7 @@ void rtd_play(struct player_opt o) {
     header.byte_packing=0;
     header.code_version=0.1;
   }
-  
-  
+    
   /*
    * Set up and create the write thread for each file.
    */
@@ -215,7 +217,10 @@ void rtd_play(struct player_opt o) {
       if (ret == 0) {
 	active_threads--;
 	if (tret) printf("file %s error: %i...", o.infiles[i], tret);
-	else printf("file %s clean...", o.infiles[i]);
+	else printf("file %s exit...", o.infiles[i]);
+	if(active_threads == 0) {
+	  running = false;
+	}
 
 	if (running) {
 	  /*
@@ -223,12 +228,12 @@ void rtd_play(struct player_opt o) {
 	   * GET UP AND FIGHT YOU SONOFABITCH!!!
 	   */
 
-	  ret = pthread_create(&data_threads[i], NULL, rtd_player_data_pt, (void *) &thread_args[i]);
+	  //	  ret = pthread_create(&data_threads[i], NULL, rtd_player_data_pt, (void *) &thread_args[i]);
 
-	  if (ret) {
+	  //	  if (ret) {
 /* 	    rtd_log("Port %i revive failed!: %i.\n", i, ret); exit(EEPP_THREAD); */
-	    printe("Port %i revive failed!: %i.\n", i, ret); exit(EEPP_THREAD);
-	  } else active_threads++;
+//	    printe("Port %i revive failed!: %i.\n", i, ret); exit(EEPP_THREAD);
+	    //	  } else active_threads++;
 
 	} // if (running)
       } // if (ret == 0) (thread died)
@@ -250,7 +255,7 @@ void rtd_play(struct player_opt o) {
     if (rtdout != NULL) free(rtdout);
   }
 
-  printf("sayonara.\n");
+  printf("Laterz...\n");
 
   pthread_exit(NULL);
   
@@ -265,7 +270,7 @@ void *rtd_player_data_pt(void *threadarg) {
   int e = 0;
   int receiving;
   
-  int ret, rtdbytes;
+  int rtdbytes;
   double telapsed;
 
   unsigned count;
@@ -273,14 +278,14 @@ void *rtd_player_data_pt(void *threadarg) {
   long long unsigned int frames, wcount;
 
   char *dataz;
-  char ostr[1024];
   struct tm ct;
   struct timeval start, now, then;
 
   int fd;
   
   if( (fd = open(arg.infile, O_RDONLY) ) == -1 ){
-    fprintf(stderr,"Couldn't open %s!!!\nLaterz...\n",arg.infile);
+    fprintf(stderr,"Couldn't open %s!!!\n",arg.infile);
+    *arg.running = false;
     arg.retval = EXIT_FAILURE; pthread_exit((void *) &arg.retval);
   } 
 
@@ -304,7 +309,7 @@ void *rtd_player_data_pt(void *threadarg) {
    * Main data loop
    */
   receiving = 1;
-  while (*arg.running) {
+  while ( *arg.running ) {
     if (arg.o.debug) { printf("Serial file %s debug.\n", arg.infile); fflush(stdout); }
 
     //    usleep(sleeptime);
@@ -313,23 +318,25 @@ void *rtd_player_data_pt(void *threadarg) {
     
     memset(dataz, 0, arg.o.acqsize);
     if (receiving) {
-      //      e = rtd_player_read_with_timeout(h, dataz, arg.o.acqsize, &count, 1000);
-      e = read(fd, dataz, arg.o.acqsize);
+      count = read(fd, dataz, arg.o.acqsize);
       usleep(100000);
     }
-    if( e == -1) {
+    if( count == -1) {
       fprintf(stderr,"Couldn't read file %s!!\n",arg.infile);
+      *arg.running = false;
       arg.retval = EXIT_FAILURE; pthread_exit((void *) &arg.retval);
+    } else if( count == 0){
+      printf("End of file %s reached. Done.\n", arg.infile );
+      receiving = 0;
+      *arg.running = false;
+      arg.retval = EXIT_SUCCESS; pthread_exit((void *) &arg.retval);
     }
     if (count > MIN_BYTES_READ) {
       wcount += count;
       //      ret = fwrite(dataz, 1, count, ofile);
       //don't need to re-write file...
-      if (ret != count) {
-
-      }
-      else if ((i++ % 10) == 0)  {
-	  printf("Read %i bytes of data\n", ret);
+      if ((i++ % 10) == 0)  {
+	  printf("Read %i bytes of data\n", count);
 	}
       }
     gettimeofday(&then, NULL);
