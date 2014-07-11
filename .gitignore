@@ -1,6 +1,8 @@
 # bk dir
 *bk
 
-# object files and executable
+# object files
 *.o
+
+# Executable
 rtd_player
