@@ -142,17 +142,17 @@ void rtd_play(struct player_opt o) {
   
   
   /*
-   * Set up and create the write thread for each serial port.
+   * Set up and create the write thread for each file.
    */
   for (int i = 0; i < o.num_files; i++) {
-    thread_args[i].np = o.ports[i];
+    thread_args[i].infile = o.infiles[i];
     ret = pthread_mutex_init(&rtdlocks[i], NULL);
     if (ret) {
       printe("RTD mutex init failed: %i.\n", ret); exit(EEPP_THREAD);
     }
     
-    rtd_log("file %s...", o.ports[i]);
-    printf("file %s...", o.ports[i]); fflush(stdout);
+/*     rtd_log("file %s...", o.infiles[i]); */
+    printf("file %s...", o.infiles[i]); fflush(stdout);
     thread_args[i].o = o;
     thread_args[i].retval = 0;
     thread_args[i].running = &running;
@@ -163,19 +163,19 @@ void rtd_play(struct player_opt o) {
     ret = pthread_create(&data_threads[i], NULL, rtd_player_data_pt, (void *) &thread_args[i]);
     
     if (ret) {
-      rtd_log("Thread %i failed!: %i.\n", i, ret); exit(EEPP_THREAD);
+/*       rtd_log("Thread %i failed!: %i.\n", i, ret); exit(EEPP_THREAD); */
       printe("Thread %i failed!: %i.\n", i, ret); exit(EEPP_THREAD);
     } else active_threads++;
   }
   
-  rtd_log("initalization done.\n");
+/*   rtd_log("initalization done.\n"); */
   printf("done.\n"); fflush(stdout);
   
   if (o.debug) printf("Size of header: %li, rtdsize: %i, o.num_files: %i.\n", sizeof(header), rtdsize, o.num_files);
 
 
   /*
-   * Now we sit back and update RTD data until all data threads quit.
+   * Now we sit back and update RTD data until all files quit reading.
    */
   gettimeofday(&then, NULL);
   while ((active_threads > 0) || running) {
@@ -214,8 +214,8 @@ void rtd_play(struct player_opt o) {
       tret = thread_args[i].retval;
       if (ret == 0) {
 	active_threads--;
-	if (tret) printf("file %s error: %i...", o.ports[i], tret);
-	else printf("file %s clean...", o.ports[i]);
+	if (tret) printf("file %s error: %i...", o.infiles[i], tret);
+	else printf("file %s clean...", o.infiles[i]);
 
 	if (running) {
 	  /*
@@ -226,7 +226,7 @@ void rtd_play(struct player_opt o) {
 	  ret = pthread_create(&data_threads[i], NULL, rtd_player_data_pt, (void *) &thread_args[i]);
 
 	  if (ret) {
-	    rtd_log("Port %i revive failed!: %i.\n", i, ret); exit(EEPP_THREAD);
+/* 	    rtd_log("Port %i revive failed!: %i.\n", i, ret); exit(EEPP_THREAD); */
 	    printe("Port %i revive failed!: %i.\n", i, ret); exit(EEPP_THREAD);
 	  } else active_threads++;
 
@@ -264,11 +264,11 @@ void *rtd_player_data_pt(void *threadarg) {
 
   int e = 0;
   int receiving;
-
-  unsigned count;
-
+  
   int ret, rtdbytes;
   double telapsed;
+
+  unsigned count;
   long long unsigned int i = 0;
   long long unsigned int frames, wcount;
 
@@ -277,9 +277,16 @@ void *rtd_player_data_pt(void *threadarg) {
   struct tm ct;
   struct timeval start, now, then;
 
+  int fd;
+  
+  if( (fd = open(arg.infile, O_RDONLY) ) == -1 ){
+    fprintf(stderr,"Couldn't open %s!!!\nLaterz...\n",arg.infile);
+    arg.retval = EXIT_FAILURE; pthread_exit((void *) &arg.retval);
+  } 
+
   dataz = malloc(arg.o.acqsize);
 
-  printf("FSCC-LVDS file %s data thread init.\n", arg.np); fflush(stdout);
+  printf("File %s thread init.\n", arg.infile); fflush(stdout);
   
   rtdbytes = arg.o.rtdsize*sizeof(short int);
   
@@ -298,19 +305,20 @@ void *rtd_player_data_pt(void *threadarg) {
    */
   receiving = 1;
   while (*arg.running) {
-    if (arg.o.debug) { printf("Serial file %s debug.\n", arg.np); fflush(stdout); }
+    if (arg.o.debug) { printf("Serial file %s debug.\n", arg.infile); fflush(stdout); }
 
     //    usleep(sleeptime);
       
-    if (arg.o.debug) { printf("Serial file %s read data.\n", arg.np); fflush(stdout); }
+    if (arg.o.debug) { printf("Serial file %s read data.\n", arg.infile); fflush(stdout); }
     
     memset(dataz, 0, arg.o.acqsize);
     if (receiving) {
       //      e = rtd_player_read_with_timeout(h, dataz, arg.o.acqsize, &count, 1000);
-      //!!!REPLACE WITH SOME SORT OF FREAD
+      e = read(fd, dataz, arg.o.acqsize);
+      usleep(100000);
     }
-    if( e == 16001) {
-      fprintf(stderr,"Couldn't read file!!\n");
+    if( e == -1) {
+      fprintf(stderr,"Couldn't read file %s!!\n",arg.infile);
       arg.retval = EXIT_FAILURE; pthread_exit((void *) &arg.retval);
     }
     if (count > MIN_BYTES_READ) {
@@ -324,10 +332,9 @@ void *rtd_player_data_pt(void *threadarg) {
 	  printf("Read %i bytes of data\n", ret);
 	}
       }
-
     gettimeofday(&then, NULL);
-    //if (arg.np == 1) { printf("r"); fflush(stdout); }
-    //        check_acq_seq(dev_handle, arg.np, &fifo_acqseq);
+    //if (arg.infile == 1) { printf("r"); fflush(stdout); }
+    //        check_acq_seq(dev_handle, arg.infile, &fifo_acqseq);
       
       // Good read
 	
@@ -338,10 +345,10 @@ void *rtd_player_data_pt(void *threadarg) {
       // "aDtromtu hoCllge e"
       //            if (arg.o.debug) {
 	
-      //            printf("p%i: %i\n",arg.np,hptr[16]*65536+hptr[17]); fflush(stdout);
+      //            printf("p%i: %i\n",arg.infile,hptr[16]*65536+hptr[17]); fflush(stdout);
       //            printf("%li.",hptr-dataz);
-      //			rtd_log("Bad Colonel Frame Header Shift on module %i, frame %llu: %i.\n", arg.np, hptr-cframe->base, frames);
-      //    			printe("CFHS on module %i, seq %i: %i.\n", arg.np, frames, hptr-dataz);
+      //			rtd_log("Bad Colonel Frame Header Shift on module %i, frame %llu: %i.\n", arg.infile, hptr-cframe->base, frames);
+      //    			printe("CFHS on module %i, seq %i: %i.\n", arg.infile, frames, hptr-dataz);
       //            }
 	
       // Check alternating LSB position within Colonel Frame
@@ -354,8 +361,8 @@ void *rtd_player_data_pt(void *threadarg) {
 		    }
 		    }
 		    if (ret != 3) {
-		    rtd_log("Bad LSB Pattern Shift on module %i, frame %llu: %i.\n", arg.np, hptr-dataz, frames);
-		    printe("Bad LSBPS on module %i, frame %llu: %i.\n", arg.np, hptr-dataz, frames);
+ 		    rtd_log("Bad LSB Pattern Shift on module %i, frame %llu: %i.\n", arg.infile, hptr-dataz, frames);
+		    printe("Bad LSBPS on module %i, frame %llu: %i.\n", arg.infile, hptr-dataz, frames);
 		    }
 		    } // if debug*/
 	
@@ -366,25 +373,25 @@ void *rtd_player_data_pt(void *threadarg) {
       /* sync.t_usec = then.tv_usec; */
       /* sync.size = count; */
 	
-      //if (arg.np == 1) { printf("b"); fflush(stdout); }
-      //	        check_acq_seq(dev_handle, arg.np, &fifo_acqseq);
-      //if (arg.np == 1) { printf("sc: %lu\n", (unsigned long) size_commit); fflush(stdout); }
+      //if (arg.infile == 1) { printf("b"); fflush(stdout); }
+      //	        check_acq_seq(dev_handle, arg.infile, &fifo_acqseq);
+      //if (arg.infile == 1) { printf("sc: %lu\n", (unsigned long) size_commit); fflush(stdout); }
       // Write header and frame to disk
       //      ret = fwrite(&sync, 1, sizeof(struct frame_sync), ofile);
       //      if (ret != sizeof(struct frame_sync))
-      //	rtd_log("Failed to write sync, file %s: %i.", arg.np, ret);
+      //	rtd_log("Failed to write sync, file %s: %i.", arg.infile, ret);
       //printf("foo"); fflush(stdout);
       //            fflush(ofile);
 	
-      //if (arg.np == 1) { printf("w"); fflush(stdout); }
-      //	        check_acq_seq(dev_handle, arg.np, &fifo_acqseq);
+      //if (arg.infile == 1) { printf("w"); fflush(stdout); }
+      //	        check_acq_seq(dev_handle, arg.infile, &fifo_acqseq);
     if ((arg.o.dt > 0) && (count == arg.o.acqsize)) {
 	// Copy into RTD memory if we're running the display
 	  
       pthread_mutex_lock(arg.rlock);
       if (arg.o.debug)
 	printf("file %s rtd moving rtdbytes %i from cfb %p to rtdb %p with %u avail.\n",
-	       arg.np, rtdbytes, dataz, arg.rtdframe, count);
+	       arg.infile, rtdbytes, dataz, arg.rtdframe, count);
       memmove(arg.rtdframe, dataz, rtdbytes);
       pthread_mutex_unlock(arg.rlock);
     }
@@ -400,20 +407,19 @@ void *rtd_player_data_pt(void *threadarg) {
   gettimeofday(&now, NULL);
     
   /* Close the file */
-  //  e = rtd_player_disconnect(h);
-  //e = fclose
-  if (e != 0) {
-    printe("Couldn't close file %i: %li.\n", arg.np, e);
+  
+  if ( (e = close(fd) ) != 0) {
+    printe("Couldn't close file %i: %li.\n", arg.infile, e);
     arg.retval = e;
   }
     
   telapsed = now.tv_sec-start.tv_sec + 1E-6*(now.tv_usec-start.tv_usec);
     
-  rtd_log("Read %llu bytes from %s in %.4f s: %.4f KBps.", count, arg.np, telapsed, (count/1024.0)/telapsed);
-  printf("Read %u bytes from %s in %.4f s: %.4f KBps.\n",  count, arg.np, telapsed, (count/1024.0)/telapsed);
+/*   rtd_log("Read %u bytes from %s in %.4f s: %.4f KBps.", count, arg.infile, telapsed, (count/1024.0)/telapsed); */
+  printf("Read %u bytes from %s in %.4f s: %.4f KBps.\n",  count, arg.infile, telapsed, (count/1024.0)/telapsed);
     
-  rtd_log("Wrote %lli bytes from %s in %.4f s: %.4f KBps.", wcount, arg.np, telapsed, (wcount/1024.0)/telapsed);
-  printf("Wrote %lli bytes from %s in %.4f s: %.4f KBps.\n", wcount, arg.np, telapsed, (wcount/1024.0)/telapsed);
+/*   rtd_log("Wrote %lli bytes from %s in %.4f s: %.4f KBps.", wcount, arg.infile, telapsed, (wcount/1024.0)/telapsed); */
+  printf("Wrote %lli bytes from %s in %.4f s: %.4f KBps.\n", wcount, arg.infile, telapsed, (wcount/1024.0)/telapsed);
     
   arg.retval = EXIT_SUCCESS; pthread_exit((void *) &arg.retval);
 }

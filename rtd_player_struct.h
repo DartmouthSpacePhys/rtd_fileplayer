@@ -16,7 +16,7 @@
 struct player_opt {
   int acqsize;
   int maxacq;
-  char *ports[MAXPORTS];
+  char *infiles[MAXINFILES];
   int num_files;
   bool oldsport;
   char *prefix;
@@ -36,13 +36,13 @@ struct colonel_frame {
   long int size;
   char *base;
   char *tail;
-  int np;
+  int infile;
 };
 
 struct rtd_player_ptargs {
   struct player_opt o;
 
-  char *np;
+  char *infile;
   time_t time;
   bool *running;
   int retval;

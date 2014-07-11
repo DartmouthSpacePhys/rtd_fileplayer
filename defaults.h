@@ -28,6 +28,6 @@
 
 #define DEF_TIMEOUT 1000 //timeout of 1 second MAX!
 
-#define MAXPORTS 4
+#define MAXINFILES 4
 
 #endif /* DEFAULTS_H_ */
