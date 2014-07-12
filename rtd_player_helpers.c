@@ -28,51 +28,6 @@ void printe(char *format, ...) {
 	va_end(args);
 }
 
-/* void rtd_log(char *format, ...) { */
-/* 	static FILE *log = NULL; */
-/*     static bool init = true; */
-/* 	static time_t start_time; */
-/* 	char ostr[1024]; */
-/* 	struct tm ct; */
-/* 	va_list args, iarg; */
-
-/*     va_start(args, format); */
-
-/*     if (init) { */
-/*     	// First run.  Initialize logs. */
-
-/* 		va_copy(iarg, args); */
-
-/* 		printf("Logging to");fflush(stdout); */
-
-/* 		openlog("rtd_player", LOG_CONS|LOG_NDELAY, LOG_LOCAL7); */
-/* 		printf(" syslog");fflush(stdout); */
-
-/* 		start_time = va_arg(iarg, time_t); */
-/* 		gmtime_r(&start_time, &ct); */
-/* 		sprintf(ostr, "%s-%04i%02i%02i-%02i%02i%02i-epp.log", format, */
-/* 				ct.tm_year+1900, ct.tm_mon+1, ct.tm_mday, ct.tm_hour, ct.tm_min, ct.tm_sec); */
-/* 		log = fopen(ostr, "a+"); */
-/* 		if (log == NULL) { */
-/* 			syslog(LOG_ERR, "[T+%li] Opening log file '%s' failed!", time(NULL)-start_time, ostr); */
-/* 			fprintf(stderr, "Opening log file '%s' failed!\n", ostr); */
-/* 		} else { */
-/* 			printf(" and %s", ostr); fflush(stdout); */
-/* 			fprintf(log, "Logging to syslog and %s started.\n", ostr); fflush(log); */
-/* 		} */
-/* 		printf(" started.\n"); fflush(stdout); */
-
-/* 		init = false; */
-/*     } */
-/*     else { */
-/* 		vsprintf(ostr, format, args); */
-/* 		syslog(LOG_ERR, "[T+%li] %s", time(NULL)-start_time, ostr); */
-
-/* 		if (log != NULL) fprintf(log, "[rtd_player T+%li] %s\n", time(NULL)-start_time, ostr);fflush(log); */
-/*     } */
-/* 	va_end(args); */
-/* } */
-
 void init_opt(struct player_opt *o) {
   memset(o, 0, sizeof(struct player_opt));
   o->acqsize = DEF_ACQSIZE;

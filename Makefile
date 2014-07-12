@@ -2,17 +2,15 @@ CC = gcc
 
 #IDIR = /usr/src/cfscc/src/
 
-#CFLAGS = -fPIC -std=gnu99 -O2 -Wall -g -I$(IDIR)
-#Full debug with -g3
-CFLAGS = -fPIC -std=gnu99 -Wall -O2 #-I$(IDIR)
-LDFLAGS = -pipe -Wall -lm -pthread -O2
+CFLAGS = -fPIC -std=gnu99 -Wall -g #-O2 #-I$(IDIR)
+LDFLAGS = -pipe -Wall -lm -pthread -g #-O2
 
 EXEC = rtd_player
 
-SRC = rtd_player.c rtd_player_helpers.c
+SRC = simple_fifo.c rtd_player.c rtd_player_helpers.c 
 OBJ = $(SRC:.c=.o)
 
-HEADERS = defaults.h rtd_player_errors.h rtd_player_helpers.h rtd_player_struct.h $(EXEC).h
+HEADERS = simple_fifo.h defaults.h rtd_player_errors.h rtd_player_helpers.h rtd_player_struct.h $(EXEC).h 
 
 all: $(SRC) $(EXEC)
 

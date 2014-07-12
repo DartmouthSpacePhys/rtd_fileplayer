@@ -27,6 +27,7 @@
 #include <math.h>
 #include <termios.h>
 
+#include "simple_fifo.h"
 #include "rtd_player_helpers.h"
 #include "rtd_player.h"
 
@@ -62,7 +63,7 @@ void rtd_play(struct player_opt o) {
   struct rtd_player_ptargs *thread_args;
   pthread_t *data_threads;
   //	pthread_t rtd_thread;
-  
+    
   short int **rtdframe, *rtdout = NULL;
   struct header_info header;
   int rfd, active_threads = 0;
@@ -153,7 +154,7 @@ void rtd_play(struct player_opt o) {
       printe("RTD mutex init failed: %i.\n", ret); exit(EEPP_THREAD);
     }
     
-/*     rtd_log("file %s...", o.infiles[i]); */
+
     printf("file %s...", o.infiles[i]); fflush(stdout);
     thread_args[i].o = o;
     thread_args[i].retval = 0;
@@ -165,13 +166,9 @@ void rtd_play(struct player_opt o) {
     ret = pthread_create(&data_threads[i], NULL, rtd_player_data_pt, (void *) &thread_args[i]);
     
     if (ret) {
-/*       rtd_log("Thread %i failed!: %i.\n", i, ret); exit(EEPP_THREAD); */
       printe("Thread %i failed!: %i.\n", i, ret); exit(EEPP_THREAD);
     } else active_threads++;
   }
-  
-/*   rtd_log("initalization done.\n"); */
-  printf("done.\n"); fflush(stdout);
   
   if (o.debug) printf("Size of header: %li, rtdsize: %i, o.num_files: %i.\n", sizeof(header), rtdsize, o.num_files);
 
@@ -217,29 +214,11 @@ void rtd_play(struct player_opt o) {
       if (ret == 0) {
 	active_threads--;
 	if (tret) printf("file %s error: %i...", o.infiles[i], tret);
-	else printf("file %s exit...", o.infiles[i]);
 	if(active_threads == 0) {
 	  running = false;
 	}
-
-	if (running) {
-	  /*
-	   * Restart any threads that decided to crap out.
-	   * GET UP AND FIGHT YOU SONOFABITCH!!!
-	   */
-
-	  //	  ret = pthread_create(&data_threads[i], NULL, rtd_player_data_pt, (void *) &thread_args[i]);
-
-	  //	  if (ret) {
-/* 	    rtd_log("Port %i revive failed!: %i.\n", i, ret); exit(EEPP_THREAD); */
-//	    printe("Port %i revive failed!: %i.\n", i, ret); exit(EEPP_THREAD);
-	    //	  } else active_threads++;
-
-	} // if (running)
       } // if (ret == 0) (thread died)
     } // for (; i < o.num_files ;)
-
-    //!!!    usleep(50000); // Zzzz...
     usleep(5000); // Zzzz...
   }
 
@@ -255,7 +234,7 @@ void rtd_play(struct player_opt o) {
     if (rtdout != NULL) free(rtdout);
   }
 
-  printf("Laterz...\n");
+  printf("All done!\n");
 
   pthread_exit(NULL);
   
@@ -266,6 +245,10 @@ void *rtd_player_data_pt(void *threadarg) {
 
   struct rtd_player_ptargs arg;
   arg = *(struct rtd_player_ptargs *) threadarg;
+
+  struct simple_fifo *fifo;
+  long int fifo_loc;
+  char *fifo_outbytes;
 
   int e = 0;
   int receiving;
@@ -282,7 +265,9 @@ void *rtd_player_data_pt(void *threadarg) {
   struct timeval start, now, then;
 
   int fd;
-  
+
+  if (arg.o.debug) { printf("File %s thread init.\n", arg.infile); fflush(stdout); }
+
   if( (fd = open(arg.infile, O_RDONLY) ) == -1 ){
     fprintf(stderr,"Couldn't open %s!!!\n",arg.infile);
     *arg.running = false;
@@ -291,14 +276,15 @@ void *rtd_player_data_pt(void *threadarg) {
 
   dataz = malloc(arg.o.acqsize);
 
-  printf("File %s thread init.\n", arg.infile); fflush(stdout);
-  
   rtdbytes = arg.o.rtdsize*sizeof(short int);
-  
+
+  fifo = malloc( sizeof(*fifo) );
+  fifo_init(fifo, 4*rtdbytes);  
+  fifo_outbytes = malloc(rtdbytes);
+
   frames = count = wcount = 0;
   
   gmtime_r(&arg.time, &ct);
-   
   gettimeofday(&start, NULL);
   then = start;
    
@@ -333,8 +319,6 @@ void *rtd_player_data_pt(void *threadarg) {
     }
     if (count > MIN_BYTES_READ) {
       wcount += count;
-      //      ret = fwrite(dataz, 1, count, ofile);
-      //don't need to re-write file...
       if ((i++ % 10) == 0)  {
 	  printf("Read %i bytes of data\n", count);
 	}
@@ -392,15 +376,27 @@ void *rtd_player_data_pt(void *threadarg) {
 	
       //if (arg.infile == 1) { printf("w"); fflush(stdout); }
       //	        check_acq_seq(dev_handle, arg.infile, &fifo_acqseq);
-    if ((arg.o.dt > 0) && (count == arg.o.acqsize)) {
+
+    if (arg.o.dt > 0) {
 	// Copy into RTD memory if we're running the display
+
+      fifo_write(fifo, dataz, count);
+
+      if( fifo_avail(fifo) > 2*rtdbytes ) {
+      
+	fifo_loc = fifo_search(fifo, "Dartmouth College", 2*rtdbytes);
+	fifo_kill(fifo, fifo_loc);
+	fifo_read(fifo_outbytes, fifo, rtdbytes);
+
+	pthread_mutex_lock(arg.rlock);
+	if (arg.o.debug)
+	  printf("file %s rtd moving rtdbytes %i from cfb %p to rtdb %p with %u avail.\n",
+		 arg.infile, rtdbytes, dataz, arg.rtdframe, count);
+	memmove(arg.rtdframe, fifo_outbytes, rtdbytes);
+	pthread_mutex_unlock(arg.rlock);
+    
+      } 
 	  
-      pthread_mutex_lock(arg.rlock);
-      if (arg.o.debug)
-	printf("file %s rtd moving rtdbytes %i from cfb %p to rtdb %p with %u avail.\n",
-	       arg.infile, rtdbytes, dataz, arg.rtdframe, count);
-      memmove(arg.rtdframe, dataz, rtdbytes);
-      pthread_mutex_unlock(arg.rlock);
     }
 	
     frames++;
@@ -422,11 +418,7 @@ void *rtd_player_data_pt(void *threadarg) {
     
   telapsed = now.tv_sec-start.tv_sec + 1E-6*(now.tv_usec-start.tv_usec);
     
-/*   rtd_log("Read %u bytes from %s in %.4f s: %.4f KBps.", count, arg.infile, telapsed, (count/1024.0)/telapsed); */
-  printf("Read %u bytes from %s in %.4f s: %.4f KBps.\n",  count, arg.infile, telapsed, (count/1024.0)/telapsed);
-    
-/*   rtd_log("Wrote %lli bytes from %s in %.4f s: %.4f KBps.", wcount, arg.infile, telapsed, (wcount/1024.0)/telapsed); */
-  printf("Wrote %lli bytes from %s in %.4f s: %.4f KBps.\n", wcount, arg.infile, telapsed, (wcount/1024.0)/telapsed);
+  printf("Read %lli bytes from %s in %.4f s: %.4f KBps.\n", wcount, arg.infile, telapsed, (wcount/1024.0)/telapsed);
     
   arg.retval = EXIT_SUCCESS; pthread_exit((void *) &arg.retval);
 }

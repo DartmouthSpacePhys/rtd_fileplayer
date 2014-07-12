@@ -4,3 +4,9 @@
 # object files and executable
 *.o
 rtd_player
+
+# biz
+*~
+
+# data
+*.data
