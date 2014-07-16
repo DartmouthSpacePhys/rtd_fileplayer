@@ -266,7 +266,7 @@ void *rtd_player_data_pt(void *threadarg) {
   double telapsed;
   int packet_hcount = 0;
 
-  unsigned count;
+  int count;
   long long unsigned int i = 0;
   long long unsigned int frames, wcount;
   int imod = 10;
@@ -279,7 +279,8 @@ void *rtd_player_data_pt(void *threadarg) {
 
   if (arg.o.debug) { printf("File %s thread init.\n", arg.infile); fflush(stdout); }
 
-  if( ( fp = fopen(arg.infile, "r") ) == NULL ){
+  fp = fopen(arg.infile, "r");
+  if( fp  == NULL ){
     fprintf(stderr,"Couldn't open %s!!!\n",arg.infile);
     *arg.running = false;
     arg.retval = EXIT_FAILURE; pthread_exit((void *) &arg.retval);
@@ -316,7 +317,7 @@ void *rtd_player_data_pt(void *threadarg) {
     
     memset(dataz, 0, arg.o.acqsize);
     if (receiving) {
-      count = fread(dataz, arg.o.acqsize, 1, fp);
+      count = fread(dataz, 1, arg.o.acqsize, fp);
       usleep(100000);
     }
     if( count == -1) {

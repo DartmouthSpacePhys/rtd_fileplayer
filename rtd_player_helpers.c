@@ -31,7 +31,8 @@ void printe(char *format, ...) {
 void init_opt(struct player_opt *o) {
   memset(o, 0, sizeof(struct player_opt));
   o->acqsize = DEF_ACQSIZE;
-  memset(o->infiles, 0, sizeof(char) * MAXINFILES*50); o->infiles[0] = "";
+  //  memset(o->infiles, 0, sizeof(char) * MAXINFILES*50); o->infiles[0] = "";
+  o->infiles[0] = "";
   o->num_files = 1;
   o->oldsport = false;
   
