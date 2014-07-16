@@ -34,9 +34,8 @@ void init_opt(struct player_opt *o) {
   memset(o->infiles, 0, sizeof(char) * MAXINFILES*50); o->infiles[0] = "";
   o->num_files = 1;
   o->oldsport = false;
-  o->prefix = DEF_PREFIX;
-  o->outdir = DEF_OUTDIR;
   
+  o->endian = DEF_ENDIANNESS;
   o->rtdsize = DEF_RTDSIZE;
   o->rtdfile = DEF_RTDFILE;
   o->dt = DEF_RTD_DT;
@@ -53,7 +52,7 @@ int parse_opt(struct player_opt *options, int argc, char **argv) {
   char *pn;
   int c, i = 0;
   
-  while (-1 != (c = getopt(argc, argv, "A:x:f:o:OP:S:C:R:m:rd:a:XvVh"))) {
+  while (-1 != (c = getopt(argc, argv, "A:x:f:S:C:ER:m:rd:a:XvVh"))) {
     switch (c) {
     case 'A':
       options->acqsize = strtoul(optarg, NULL, 0);
@@ -75,12 +74,9 @@ int parse_opt(struct player_opt *options, int argc, char **argv) {
 	printf("Now we gots %i: %s\n",j,infiles[j]);
       }
       break;
-    case 'P':
-      options->prefix = optarg;
+    case 'E':
+      options->endian = true;
       break;
-    case 'o':
-      options->outdir = optarg;
-      break;      
     case 'R':
       options->rtdsize = strtoul(optarg, NULL, 0);
       break;
@@ -107,9 +103,9 @@ int parse_opt(struct player_opt *options, int argc, char **argv) {
       printf("\t-f <#>\tFile(s) to 'acquire' from (see below) [1].\n");
       printf("\t\tCan either give a single file, or a comma-separated list.\n");
       printf("\t\ti.e., \"this.data,that.data\", \"/path/to/my.data\"\n");
-      printf("\t-P <s>\tSet output filename prefix [%s].\n", DEF_PREFIX);
-      printf("\t-o <s>\tSet output directory [%s].\n", DEF_OUTDIR);
       printf("\n");
+      printf("\t-E Switch endianness of \"Dartmouth\" search for RTD output [Default: %i]\n",DEF_ENDIANNESS);
+      printf("\t\t(FSCC-LVDS data needs this disabled, but TCP data needs it enabled)\n");
       printf("\t-R <#>\tReal-time display output size (in words) [%i].\n", DEF_RTDSIZE);
       printf("\t-m <s>\tReal-time display file [%s].\n", DEF_RTDFILE);
       printf("\t-d <#>\tReal-time display output period [%i].\n", DEF_RTD_DT);

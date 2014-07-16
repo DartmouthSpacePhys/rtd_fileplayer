@@ -13,14 +13,12 @@
 /* Size of data in bytes between frame sync pulses */
 #define DEF_ACQSIZE 131200  // Data acquisition request size for TRANSPARENT mode
 
-#define DEF_PREFIX "rtd_player"
-#define DEF_OUTDIR "/home/spencerh/data"
-
 #define DEF_CFSIZE 65536 // Colonel Frame size, words
 // #define DEF_CFHEAD "Dartmouth College "
 /* Accommodate the weirdness right now */
 #define DEF_CFHEAD "Dartmouth College"
 
+#define DEF_ENDIANNESS false
 #define DEF_RTDSIZE 65536 // RTD Output size, words
 #define DEF_RTDFILE "/tmp/rtd/rtd.data"
 #define DEF_RTD_DT 0 // No RTD by default

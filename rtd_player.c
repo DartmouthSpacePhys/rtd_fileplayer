@@ -247,6 +247,13 @@ void *rtd_player_data_pt(void *threadarg) {
   arg = *(struct rtd_player_ptargs *) threadarg;
 
   struct simple_fifo *fifo;
+  char fifo_srch[18];
+  if (arg.o.endian) {
+    strcpy(fifo_srch,"Dartmouth College");
+  }
+  else {
+    strcpy(fifo_srch, "aDtromtu hoCllge");
+  }
   long int fifo_loc;
   char *fifo_outbytes;
 
@@ -264,11 +271,11 @@ void *rtd_player_data_pt(void *threadarg) {
   struct tm ct;
   struct timeval start, now, then;
 
-  int fd;
+  FILE *fp;
 
   if (arg.o.debug) { printf("File %s thread init.\n", arg.infile); fflush(stdout); }
 
-  if( (fd = open(arg.infile, O_RDONLY) ) == -1 ){
+  if( ( fp = fopen(arg.infile, "r") ) == NULL ){
     fprintf(stderr,"Couldn't open %s!!!\n",arg.infile);
     *arg.running = false;
     arg.retval = EXIT_FAILURE; pthread_exit((void *) &arg.retval);
@@ -304,7 +311,7 @@ void *rtd_player_data_pt(void *threadarg) {
     
     memset(dataz, 0, arg.o.acqsize);
     if (receiving) {
-      count = read(fd, dataz, arg.o.acqsize);
+      count = fread(dataz, arg.o.acqsize, 1, fp);
       usleep(100000);
     }
     if( count == -1) {
@@ -384,7 +391,10 @@ void *rtd_player_data_pt(void *threadarg) {
 
       if( fifo_avail(fifo) > 2*rtdbytes ) {
       
-	fifo_loc = fifo_search(fifo, "Dartmouth College", 2*rtdbytes);
+  
+	if ( (fifo_loc = fifo_search(fifo, fifo_srch, 2*rtdbytes) ) == EXIT_FAILURE ) {
+	  fprintf(stderr, "Couldn't find %s in fifo search!!\n", fifo_srch);
+	}
 	fifo_kill(fifo, fifo_loc);
 	fifo_read(fifo_outbytes, fifo, rtdbytes);
 
@@ -411,11 +421,15 @@ void *rtd_player_data_pt(void *threadarg) {
     
   /* Close the file */
   
-  if ( (e = close(fd) ) != 0) {
+  if ( (e = fclose(fp) ) != 0) {
     printe("Couldn't close file %i: %li.\n", arg.infile, e);
     arg.retval = e;
   }
     
+  /* Free 'em all */
+  free(dataz);
+  free(fifo); free(fifo_outbytes);
+
   telapsed = now.tv_sec-start.tv_sec + 1E-6*(now.tv_usec-start.tv_usec);
     
   printf("Read %lli bytes from %s in %.4f s: %.4f KBps.\n", wcount, arg.infile, telapsed, (wcount/1024.0)/telapsed);

@@ -19,9 +19,8 @@ struct player_opt {
   char *infiles[MAXINFILES];
   int num_files;
   bool oldsport;
-  char *prefix;
-  char *outdir;
   
+  bool endian;
   int rtdsize;
   char *rtdfile;
   double dt;
