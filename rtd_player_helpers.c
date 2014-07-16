@@ -35,6 +35,7 @@ void init_opt(struct player_opt *o) {
   o->num_files = 1;
   o->oldsport = false;
   
+  o->tcp_data = DEF_TCPDATA;
   o->endian = DEF_ENDIANNESS;
   o->rtdsize = DEF_RTDSIZE;
   o->rtdfile = DEF_RTDFILE;
@@ -52,7 +53,7 @@ int parse_opt(struct player_opt *options, int argc, char **argv) {
   char *pn;
   int c, i = 0;
   
-  while (-1 != (c = getopt(argc, argv, "A:x:f:S:C:ER:m:rd:a:XvVh"))) {
+  while (-1 != (c = getopt(argc, argv, "A:x:f:S:C:tER:m:rd:a:XvVh"))) {
     switch (c) {
     case 'A':
       options->acqsize = strtoul(optarg, NULL, 0);
@@ -74,6 +75,8 @@ int parse_opt(struct player_opt *options, int argc, char **argv) {
 	printf("Now we gots %i: %s\n",j,infiles[j]);
       }
       break;
+    case 't':
+      options->tcp_data = true;
     case 'E':
       options->endian = true;
       break;
@@ -104,6 +107,7 @@ int parse_opt(struct player_opt *options, int argc, char **argv) {
       printf("\t\tCan either give a single file, or a comma-separated list.\n");
       printf("\t\ti.e., \"this.data,that.data\", \"/path/to/my.data\"\n");
       printf("\n");
+      printf("\t-t Wallops TCP/IP data (removes TCP packet headers from RTD data) [Default: %i]\n", DEF_TCPDATA);
       printf("\t-E Switch endianness of \"Dartmouth\" search for RTD output [Default: %i]\n",DEF_ENDIANNESS);
       printf("\t\t(FSCC-LVDS data needs this disabled, but TCP data needs it enabled)\n");
       printf("\t-R <#>\tReal-time display output size (in words) [%i].\n", DEF_RTDSIZE);

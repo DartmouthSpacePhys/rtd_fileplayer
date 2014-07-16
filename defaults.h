@@ -18,6 +18,7 @@
 /* Accommodate the weirdness right now */
 #define DEF_CFHEAD "Dartmouth College"
 
+#define DEF_TCPDATA false
 #define DEF_ENDIANNESS false
 #define DEF_RTDSIZE 65536 // RTD Output size, words
 #define DEF_RTDFILE "/tmp/rtd/rtd.data"

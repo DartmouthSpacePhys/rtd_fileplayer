@@ -20,6 +20,7 @@ struct player_opt {
   int num_files;
   bool oldsport;
   
+  bool tcp_data;
   bool endian;
   int rtdsize;
   char *rtdfile;

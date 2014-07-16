@@ -249,12 +249,14 @@ void *rtd_player_data_pt(void *threadarg) {
   struct simple_fifo *fifo;
   char fifo_srch[18];
   if (arg.o.endian) {
-    strcpy(fifo_srch,"Dartmouth College");
-  }
-  else {
     strcpy(fifo_srch, "aDtromtu hoCllge");
   }
+  else {
+    strcpy(fifo_srch,"Dartmouth College");
+  }
   long int fifo_loc;
+  long int skip_loc;
+  long int oldskip_loc;
   char *fifo_outbytes;
 
   int e = 0;
@@ -262,10 +264,12 @@ void *rtd_player_data_pt(void *threadarg) {
   
   int rtdbytes;
   double telapsed;
+  int packet_hcount = 0;
 
   unsigned count;
   long long unsigned int i = 0;
   long long unsigned int frames, wcount;
+  int imod = 10;
 
   char *dataz;
   struct tm ct;
@@ -302,6 +306,7 @@ void *rtd_player_data_pt(void *threadarg) {
    * Main data loop
    */
   receiving = 1;
+
   while ( *arg.running ) {
     if (arg.o.debug) { printf("Serial file %s debug.\n", arg.infile); fflush(stdout); }
 
@@ -326,7 +331,7 @@ void *rtd_player_data_pt(void *threadarg) {
     }
     if (count > MIN_BYTES_READ) {
       wcount += count;
-      if ((i++ % 10) == 0)  {
+      if ((i++ % imod) == 0)  {
 	  printf("Read %i bytes of data\n", count);
 	}
       }
@@ -385,26 +390,40 @@ void *rtd_player_data_pt(void *threadarg) {
       //	        check_acq_seq(dev_handle, arg.infile, &fifo_acqseq);
 
     if (arg.o.dt > 0) {
-	// Copy into RTD memory if we're running the display
 
+      // Copy into RTD memory if we're running the display
       fifo_write(fifo, dataz, count);
 
-      if( fifo_avail(fifo) > 2*rtdbytes ) {
-      
-  
-	if ( (fifo_loc = fifo_search(fifo, fifo_srch, 2*rtdbytes) ) == EXIT_FAILURE ) {
+      if( fifo_avail(fifo) > 2*rtdbytes ) {      
+	if ( (fifo_loc = fifo_search(fifo, fifo_srch, 2*rtdbytes) ) != EXIT_FAILURE ) {
+
+	  //Junk everything in FIFO before new Dartmouth header
+	  fifo_kill(fifo, fifo_loc);
+
+	  if(arg.o.tcp_data){
+	  //Junk all TCP packet headers
+	    oldskip_loc = fifo_loc;
+	    while( ( skip_loc = fifo_skip("01234567", oldskip_loc, 36, 
+					  rtdbytes - (oldskip_loc - fifo_loc), fifo) ) != EXIT_FAILURE ) {
+	      packet_hcount++;
+	      oldskip_loc = skip_loc;
+	    }
+	    if( i % imod == 0 ) {
+	      printf("Killed %i packet headers\n", packet_hcount);
+	    }
+	  }
+	  fifo_read(fifo_outbytes, fifo, rtdbytes);
+	  pthread_mutex_lock(arg.rlock);
+	  if (arg.o.debug) {
+	    printf("file %s rtd moving rtdbytes %i from cfb %p to rtdb %p with %u avail.\n",
+		   arg.infile, rtdbytes, dataz, arg.rtdframe, count);
+	  }
+	  memmove(arg.rtdframe, fifo_outbytes, rtdbytes);
+	  pthread_mutex_unlock(arg.rlock);
+	}
+	else {
 	  fprintf(stderr, "Couldn't find %s in fifo search!!\n", fifo_srch);
 	}
-	fifo_kill(fifo, fifo_loc);
-	fifo_read(fifo_outbytes, fifo, rtdbytes);
-
-	pthread_mutex_lock(arg.rlock);
-	if (arg.o.debug)
-	  printf("file %s rtd moving rtdbytes %i from cfb %p to rtdb %p with %u avail.\n",
-		 arg.infile, rtdbytes, dataz, arg.rtdframe, count);
-	memmove(arg.rtdframe, fifo_outbytes, rtdbytes);
-	pthread_mutex_unlock(arg.rlock);
-    
       } 
 	  
     }

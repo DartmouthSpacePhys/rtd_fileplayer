@@ -3,6 +3,8 @@
  *
  *  Created on: Mar 1, 2011
  *      Author: wibble
+ *
+ *  fifo_skip and fifo_search during Jul 2014 by Spencer Hatch, MPD
  */
 
 #define _GNU_SOURCE

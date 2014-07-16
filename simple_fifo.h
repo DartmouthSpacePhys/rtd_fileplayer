@@ -3,6 +3,8 @@
  *
  *  Created on: Mar 1, 2011
  *      Author: wibble
+ *
+ *  Mods during July 2014 by Spencer Hatch, MPD
  */
 
 #ifndef SIMPLE_FIFO_H_
