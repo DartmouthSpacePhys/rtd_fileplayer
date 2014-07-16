@@ -24,7 +24,6 @@
 #include <signal.h>
 #include <sys/time.h>
 #include <unistd.h>
-#include <math.h>
 #include <termios.h>
 
 #include "simple_fifo.h"
@@ -264,7 +263,11 @@ void *rtd_player_data_pt(void *threadarg) {
   
   int rtdbytes;
   double telapsed;
+
+  //TCP stuff
   int packet_hcount = 0;
+  struct tcp_header *tcp_header;
+  int pack_err;
 
   int count;
   long long unsigned int i = 0;
@@ -293,6 +296,8 @@ void *rtd_player_data_pt(void *threadarg) {
   fifo = malloc( sizeof(*fifo) );
   fifo_init(fifo, 4*rtdbytes);  
   fifo_outbytes = malloc(rtdbytes);
+  char skip_str[8] = { 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07 };
+  tcp_header = malloc( sizeof(struct tcp_header) );
 
   frames = count = wcount = 0;
   
@@ -390,29 +395,43 @@ void *rtd_player_data_pt(void *threadarg) {
       //if (arg.infile == 1) { printf("w"); fflush(stdout); }
       //	        check_acq_seq(dev_handle, arg.infile, &fifo_acqseq);
 
+    if( arg.o.tcp_data ){
+      printf("num_reads = %llu\n", i);
+      pack_err = parse_tcp_header(tcp_header, dataz, 40);
+      if( pack_err == EXIT_SUCCESS){
+	pack_err = print_tcp_header(tcp_header);
+      }
+      else{
+	printf("NOPE! parse_tcp_header didn't work.\n");	
+      }
+    }
     if (arg.o.dt > 0) {
 
       // Copy into RTD memory if we're running the display
       fifo_write(fifo, dataz, count);
 
-      if( fifo_avail(fifo) > 2*rtdbytes ) {      
-	if ( (fifo_loc = fifo_search(fifo, fifo_srch, 2*rtdbytes) ) != EXIT_FAILURE ) {
+      if( fifo_avail(fifo) > 2*rtdbytes ) {      // Enough to make sure we find a full frame
 
-	  //Junk everything in FIFO before new Dartmouth header
-	  fifo_kill(fifo, fifo_loc);
+	if ( (fifo_loc = fifo_search(fifo, fifo_srch, 2*rtdbytes) ) != EXIT_FAILURE ) {
 
 	  if(arg.o.tcp_data){
 	  //Junk all TCP packet headers
+	    packet_hcount = 0;
 	    oldskip_loc = fifo_loc;
-	    while( ( skip_loc = fifo_skip("01234567", oldskip_loc, 36, 
+	    while( ( skip_loc = fifo_skip(skip_str, 8, oldskip_loc, 36, 
 					  rtdbytes - (oldskip_loc - fifo_loc), fifo) ) != EXIT_FAILURE ) {
 	      packet_hcount++;
 	      oldskip_loc = skip_loc;
 	    }
-	    if( i % imod == 0 ) {
+	    //	    if( i % imod == 0 ) {
 	      printf("Killed %i packet headers\n", packet_hcount);
-	    }
+	      //	    }
 	  }
+	  fifo_loc = oldskip_loc;
+
+	  //Junk everything in FIFO before new Dartmouth header
+	  fifo_kill(fifo, fifo_loc);
+
 	  fifo_read(fifo_outbytes, fifo, rtdbytes);
 	  pthread_mutex_lock(arg.rlock);
 	  if (arg.o.debug) {

@@ -106,15 +106,14 @@ long int fifo_search(struct simple_fifo *fifo, char *search_str, size_t search_l
  * This function moves all data between fifo->head and the first instance of skip_str forward by "skipbytes" bytes
  * So it effectively resizes the data available in the FIFO by overwriting all bytes to be skipped
  */
-long int fifo_skip(char *skip_str, long int start_loc, long int skipbytes, size_t search_len, struct simple_fifo *fifo) {
+long int fifo_skip(char *skip_str, size_t str_len, long int start_loc, long int skipbytes, size_t search_len, struct simple_fifo *fifo) {
   void *str_loc;
   long int span; // Amount of data between fifo->head and str_loc
   //  long int shift = fifo->head - fifo->base; // Current read point
 
   /* Calculate distance from head to skip_str */
-  str_loc = memmem(fifo->head+start_loc, search_len, skip_str, strlen(skip_str) ); 
+  str_loc = memmem(fifo->head+start_loc, search_len, skip_str, str_len ); 
   if( str_loc != NULL ){
-
     span = (long int)str_loc - (long int)fifo->head; 
 
     /* Move all data between fifo->head and str_loc forward by skipbytes, overwriting all bytes to be skipped */

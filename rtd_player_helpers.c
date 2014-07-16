@@ -7,12 +7,13 @@
  *
  */
 
+#define _GNU_SOURCE
+
 #include <inttypes.h>
 #include <stdio.h>
 #include <unistd.h>
 #include <stdlib.h>
 #include <string.h>
-#include <syslog.h>
 #include <stdarg.h>
 #include <time.h>
 
@@ -137,4 +138,67 @@ int int_cmp(const void *a, const void *b)
      and positive if a > b */
 }
 
+/* This one is for pulling in PCM data, the structure of which 
+ * (at least for a single synchronous PCM channel coming from the DEWESoft 
+ * NET interface at Wallops) is as follows:
+ * 
+ * Bytes 0-7:  Start packet string: { 0x00, 0x01, 0x02, 0x03, /
+ *                                   0x04, 0x05, 0x06, 0x07 }
+ * Bytes 8-11: (32-bit int) Packet size in bytes without stop and start string
+ * Bytes 12-15: (32-bit int) Packet type (always zero for data packets)
+ * Bytes 16-19: (32-bit int) Number of synchronous samples per channel
+ * Bytes 20-27: (64-bit int) Number of samples acquired so far
+ * Bytes 28-35: (Double floating point) Absolute/relative time
+ *              (# days since 12/30/1899 | number of days since start of acq)
+ * 
+ * *Total header offset is 36 bytes*
+ *
+ * Bytes 36-39: Number of samples
+ * Bytes 40-(# of samples * sample data type, which should be two-byte unsigned words): Data
+ */
+/* struct tcp_header { */
+/*   char start_str[8]; */
+/*   uint32_t pack_sz; //in bytes */
+/*   uint32_t pack_numsamps; //number of synchronous samples per channel  */
+/*                           //(there should only be one channel) */
+/*   uint64_t pack_totalsamps; //number of samples acquired so far */
+/*   double pack_time; // as given above */
+/* }; */
 
+
+int parse_tcp_header(struct tcp_header *header, char *header_bytes, size_t header_length) {
+
+  printf("tcp_header is %li bytes large\n", sizeof(struct tcp_header) );
+  
+  char start_str[8] = { 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07 };
+
+  void *check_addr = memmem(header_bytes, header_length, start_str, 8);
+
+  if( check_addr == header ){
+    memcpy(header, header_bytes, header_length);
+  }
+  else {
+    printf("start_str isn't located at beginning of header!\ncheck_addr: %p\nheader addr: %p\n",
+	   check_addr, header);
+    printf("We'll just assign things where check_addr found them instead.\n");
+    memcpy(header, header_bytes, sizeof(struct tcp_header) );
+    
+    return EXIT_FAILURE;
+  }
+  return EXIT_SUCCESS;
+}
+
+int print_tcp_header(struct tcp_header *header){
+
+  printf("TCP header start string =\t\t");
+  for (int i = 0; i < 8; i ++){
+    printf("%c",header->start_str[i]);
+  }
+  printf("\n");
+  printf("Packet size:\t\t%"PRIu32"\n", header->pack_sz);
+  printf("Packet number of samples:\t%"PRIu32"\n", header->pack_numsamps);
+  printf("Total samples sent so far:\t%"PRIu64"\n", header->pack_totalsamps);
+  printf("Packet time:\t\t%f\n", header->pack_time);
+
+  return EXIT_SUCCESS;
+}
