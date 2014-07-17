@@ -398,11 +398,13 @@ void *rtd_player_data_pt(void *threadarg) {
     if( arg.o.tcp_data ){
       printf("num_reads = %llu\n", i);
       pack_err = parse_tcp_header(tcp_header, dataz, 40);
-      if( pack_err == EXIT_SUCCESS){
+      if( ( i == 1 ) && ( pack_err == EXIT_SUCCESS ) ){
+	
+	printf("Data header start string =\t\t");
+	for (int j = 0; j < 8; j++ ){
+	  printf("%x",dataz[j]);
+	}
 	pack_err = print_tcp_header(tcp_header);
-      }
-      else{
-	printf("NOPE! parse_tcp_header didn't work.\n");	
       }
     }
     if (arg.o.dt > 0) {

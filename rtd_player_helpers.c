@@ -174,16 +174,17 @@ int parse_tcp_header(struct tcp_header *header, char *header_bytes, size_t heade
 
   void *check_addr = memmem(header_bytes, header_length, start_str, 8);
 
-  if( check_addr == header ){
+  if( (long int)check_addr == (long int)header ){
     memcpy(header, header_bytes, header_length);
   }
   else {
     printf("start_str isn't located at beginning of header!\ncheck_addr: %p\nheader addr: %p\n",
 	   check_addr, header);
-    printf("We'll just assign things where check_addr found them instead.\n");
-    memcpy(header, header_bytes, sizeof(struct tcp_header) );
-    
-    return EXIT_FAILURE;
+    if ( check_addr != NULL ){
+      printf("We'll just assign things where check_addr found them instead.\n");
+      memcpy(header, header_bytes, sizeof(struct tcp_header) );
+    }
+    //    return EXIT_FAILURE;
   }
   return EXIT_SUCCESS;
 }
@@ -192,13 +193,14 @@ int print_tcp_header(struct tcp_header *header){
 
   printf("TCP header start string =\t\t");
   for (int i = 0; i < 8; i ++){
-    printf("%c",header->start_str[i]);
+    printf("%x",header->start_str[i]);
   }
   printf("\n");
   printf("Packet size:\t\t%"PRIu32"\n", header->pack_sz);
+  printf("Pakcet type:\t\t%"PRIu32"\n", header->pack_type);
   printf("Packet number of samples:\t%"PRIu32"\n", header->pack_numsamps);
   printf("Total samples sent so far:\t%"PRIu64"\n", header->pack_totalsamps);
   printf("Packet time:\t\t%f\n", header->pack_time);
-
+  printf("Sync channel num packets:\t%"PRIu32"\n", header->sync_numsamps);
   return EXIT_SUCCESS;
 }
