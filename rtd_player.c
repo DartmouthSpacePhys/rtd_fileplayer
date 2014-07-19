@@ -254,8 +254,8 @@ void *rtd_player_data_pt(void *threadarg) {
     strcpy(fifo_srch,"Dartmouth College");
   }
   long int fifo_loc;
-  long int skip_loc;
-  long int oldskip_loc;
+  //  long int skip_loc;
+  //  long int oldskip_loc;
   char *fifo_outbytes;
 
   int e = 0;
@@ -266,8 +266,17 @@ void *rtd_player_data_pt(void *threadarg) {
 
   //TCP stuff
   int packet_hcount = 0;
+  int tail_count = 0;
   struct tcp_header *tcp_header;
-  int pack_err;
+  int header_size = 40;
+  int tail_size = 8;
+  void *oldheader_loc;
+  void *header_loc;
+  void *tail_loc;
+  bool junk_tcpheader = true;
+
+
+
 
   int count;
   long long unsigned int i = 0;
@@ -296,7 +305,10 @@ void *rtd_player_data_pt(void *threadarg) {
   fifo = malloc( sizeof(*fifo) );
   fifo_init(fifo, 4*rtdbytes);  
   fifo_outbytes = malloc(rtdbytes);
-  char skip_str[8] = { 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07 };
+  long int fifo_count;
+  char tcp_str[16] = { 0x07, 0x06, 0x05, 0x04, 0x03, 0x02, 0x01, 0x00,
+		       0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07 };
+
   tcp_header = malloc( sizeof(struct tcp_header) );
 
   frames = count = wcount = 0;
@@ -341,95 +353,138 @@ void *rtd_player_data_pt(void *threadarg) {
 	  printf("Read %i bytes of data\n", count);
 	}
       }
+    
+    if(arg.o.debug){ printf("num_reads = %llu\n", i); }
+    
     gettimeofday(&then, NULL);
-    //if (arg.infile == 1) { printf("r"); fflush(stdout); }
-    //        check_acq_seq(dev_handle, arg.infile, &fifo_acqseq);
-      
-      // Good read
-	
-      // copy and write
-	
-      // Check DSP header position within FIFO
-      // "Dartmouth College "
-      // "aDtromtu hoCllge e"
-      //            if (arg.o.debug) {
-	
-      //            printf("p%i: %i\n",arg.infile,hptr[16]*65536+hptr[17]); fflush(stdout);
-      //            printf("%li.",hptr-dataz);
-      //			rtd_log("Bad Colonel Frame Header Shift on module %i, frame %llu: %i.\n", arg.infile, hptr-cframe->base, frames);
-      //    			printe("CFHS on module %i, seq %i: %i.\n", arg.infile, frames, hptr-dataz);
-      //            }
-	
-      // Check alternating LSB position within Colonel Frame
-      /*            if (arg.o.debug) {
-		    for (int i = 0; i < 175; i++) {
-		    ret = cfshort[31+i]&0b1;
-		    if (ret) {
-		    ret = i;
-		    break;
-		    }
-		    }
-		    if (ret != 3) {
- 		    rtd_log("Bad LSB Pattern Shift on module %i, frame %llu: %i.\n", arg.infile, hptr-dataz, frames);
-		    printe("Bad LSBPS on module %i, frame %llu: %i.\n", arg.infile, hptr-dataz, frames);
-		    }
-		    } // if debug*/
-	
-      // Build add-on frame header
-      /* memset(&sync, 0, 16); */
-      /* strncpy(sync.pattern, "\xFE\x6B\x28\x40", 4); */
-      /* sync.t_sec = then.tv_sec-TIME_OFFSET; */
-      /* sync.t_usec = then.tv_usec; */
-      /* sync.size = count; */
-	
-      //if (arg.infile == 1) { printf("b"); fflush(stdout); }
-      //	        check_acq_seq(dev_handle, arg.infile, &fifo_acqseq);
-      //if (arg.infile == 1) { printf("sc: %lu\n", (unsigned long) size_commit); fflush(stdout); }
-      // Write header and frame to disk
-      //      ret = fwrite(&sync, 1, sizeof(struct frame_sync), ofile);
-      //      if (ret != sizeof(struct frame_sync))
-      //	rtd_log("Failed to write sync, file %s: %i.", arg.infile, ret);
-      //printf("foo"); fflush(stdout);
-      //            fflush(ofile);
-	
-      //if (arg.infile == 1) { printf("w"); fflush(stdout); }
-      //	        check_acq_seq(dev_handle, arg.infile, &fifo_acqseq);
 
     if( arg.o.tcp_data ){
-      printf("num_reads = %llu\n", i);
-      pack_err = parse_tcp_header(tcp_header, dataz, 40);
-      if( ( i == 1 ) && ( pack_err == EXIT_SUCCESS ) ){
+
+      packet_hcount = 0;
+      long int tail_diff = 0;
+      long int header_diff = 0;
+      long int keep = count;
+
+      tail_loc = memmem(dataz, count, tcp_str, 8);
+      oldheader_loc = memmem(dataz, keep, &tcp_str[8], 8);
+
+      /*In general, reads will finish before we find the tail, so we want to kill them right here*/
+      if( (tail_loc != NULL ) && ( oldheader_loc != NULL ) && (tail_loc < oldheader_loc) ){
+
+	tail_count++;
+
+	if(arg.o.debug){ printf("**\ntail %i loc:%p\n**\n",packet_hcount, tail_loc); }
+
+	if(junk_tcpheader){
+	  //get diff between start of dataz and where tail was found so we don't move more than warranted
+	  tail_diff = (long int)tail_loc - (long int)dataz;
+	  if(arg.o.debug){ printf("tail diff:\t%li\n",tail_diff); }
+
+	  keep -= ( tail_size + tail_diff );
+
+	  if(arg.o.debug) {printf("Copying %li bytes from %p to %p\n",keep,
+				  tail_loc+tail_size, tail_loc); }
+	  memmove(tail_loc, tail_loc+tail_size, keep); 
+
+	  oldheader_loc -= tail_size; 	  //We dropped a tail, so we need to update the header location
+	}	
+
+      }
+
+      /*First go, in case dataz starts with a header*/
+      //&tcp_str[8] is address for start string
+      if( oldheader_loc != NULL ){
+	packet_hcount++;
+	if(arg.o.debug){printf("**\nheader %i loc:%p\n**\n",packet_hcount, oldheader_loc); }
 	
-	printf("Data header start string =\t\t");
-	for (int j = 0; j < 8; j++ ){
-	  printf("%x",dataz[j]);
+
+	//Get tcp packet header data
+	memcpy(tcp_header, oldheader_loc, header_size);
+	
+	if((i-1) % imod == 0) print_tcp_header(tcp_header);
+	
+	//JUNK HEADER RIGHT HERE
+	if(junk_tcpheader){
+
+	  //get diff between start of dataz and where header was found so we don't move more than is warranted
+	  header_diff = (long int)oldheader_loc - (long int)dataz;
+	  if(arg.o.debug){ printf("header diff:\t%li\n",header_diff); }
+
+	  keep =  count - header_size - header_diff; //Only deal with bytes that haven't been searched or discarded
+
+	  if(arg.o.debug) {printf("Copying %li bytes from %p to %p\n",keep,
+				  oldheader_loc+header_size, oldheader_loc); }
+	  memmove(oldheader_loc, oldheader_loc+header_size, keep); 
+	}	
+
+	//Now data are moved, and oldheader_loc has no header there!
+	//loop while we can still find a footer immediately followed by a header
+	while( ( keep  > 0 )  &&
+	       ( ( header_loc = parse_tcp_header(tcp_header, oldheader_loc, keep ) )  != NULL ) ){
+	  packet_hcount++;
+	  tail_count++;
+
+	  //	  printf("**\nheader %i loc:%p\n**\n",packet_hcount,header_loc);
+	  //	  if((i-1) % imod == 0) pack_err = print_tcp_header(tcp_header);
+	  //	  pack_err = print_tcp_header(tcp_header);
+	
+	  //JUNK HEADER RIGHT HERE
+	  if(junk_tcpheader){
+
+	    header_diff = (long int)header_loc - (long int)oldheader_loc;
+	    
+	    if(arg.o.debug) {printf("header diff:\t%li\n",header_diff); }
+
+	    keep = keep -  header_diff - header_size - tail_size; //only keep bytes not searched or discarded
+
+	    if(arg.o.debug){ printf("Keep+totaldiff=\t%li\n",keep+(long int)header_loc-(long int)dataz); }
+
+	    //Notice that the following memmove looks at header_loc MINUS tail_size, which is because we want 
+	    //to kill the footer of the TCPIP packet (i.e., {0x07,0x06,0x05,0x04,0x03,0x02,0x01,0x00})
+	    memmove(header_loc-tail_size,header_loc+header_size, keep ); 
+	    if(arg.o.debug){ printf("Kept %li bytes\n",keep); }
+	  }
+	  oldheader_loc = header_loc;	
 	}
-	pack_err = print_tcp_header(tcp_header);
+      
+      
+      
       }
     }
+
     if (arg.o.dt > 0) {
-
+  
+      fifo_count = count - tail_count * tail_size - packet_hcount * header_size;
       // Copy into RTD memory if we're running the display
-      fifo_write(fifo, dataz, count);
 
+      fifo_write( fifo, dataz, fifo_count );
+
+      if ( (  parse_tcp_header(tcp_header, fifo->head, fifo_avail(fifo) ) ) != NULL ) {
+	printf("Missed a tcp header!!!\n");
+      }
+      if( ( memmem(fifo->head, fifo_avail(fifo), tcp_str, tail_size) ) != NULL ){
+	printf("Missed a footer!!!\n");
+      }
+      
       if( fifo_avail(fifo) > 2*rtdbytes ) {      // Enough to make sure we find a full frame
 
 	if ( (fifo_loc = fifo_search(fifo, fifo_srch, 2*rtdbytes) ) != EXIT_FAILURE ) {
 
-	  if(arg.o.tcp_data){
-	  //Junk all TCP packet headers
-	    packet_hcount = 0;
-	    oldskip_loc = fifo_loc;
-	    while( ( skip_loc = fifo_skip(skip_str, 8, oldskip_loc, 36, 
-					  rtdbytes - (oldskip_loc - fifo_loc), fifo) ) != EXIT_FAILURE ) {
-	      packet_hcount++;
-	      oldskip_loc = skip_loc;
-	    }
-	    //	    if( i % imod == 0 ) {
-	      printf("Killed %i packet headers\n", packet_hcount);
-	      //	    }
-	  }
-	  fifo_loc = oldskip_loc;
+	  /* if(arg.o.tcp_data){ */
+	  /* //Junk all TCP packet headers */
+	  /*   packet_hcount = 0; */
+	  /*   oldskip_loc = fifo_loc; */
+	  /*   while( ( skip_loc = fifo_skip(skip_str, 8, oldskip_loc, 36,  */
+	  /* 				  rtdbytes - (oldskip_loc - fifo_loc), fifo) ) != EXIT_FAILURE ) { */
+	  /*     packet_hcount++; */
+	  /*     oldskip_loc = skip_loc; */
+	  /*   } */
+	  /*   //	    if( i % imod == 0 ) { */
+	  /*     printf("Killed %i packet headers\n", packet_hcount); */
+	  /*     //	    } */
+	  /* } */
+
+	  //	  fifo_loc = oldskip_loc;
 
 	  //Junk everything in FIFO before new Dartmouth header
 	  fifo_kill(fifo, fifo_loc);

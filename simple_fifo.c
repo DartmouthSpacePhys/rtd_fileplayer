@@ -114,6 +114,7 @@ long int fifo_skip(char *skip_str, size_t str_len, long int start_loc, long int 
   /* Calculate distance from head to skip_str */
   str_loc = memmem(fifo->head+start_loc, search_len, skip_str, str_len ); 
   if( str_loc != NULL ){
+
     span = (long int)str_loc - (long int)fifo->head; 
 
     /* Move all data between fifo->head and str_loc forward by skipbytes, overwriting all bytes to be skipped */
