@@ -254,8 +254,6 @@ void *rtd_player_data_pt(void *threadarg) {
     strcpy(fifo_srch,"Dartmouth College");
   }
   long int fifo_loc;
-  //  long int skip_loc;
-  //  long int oldskip_loc;
   char *fifo_outbytes;
 
   int e = 0;
@@ -275,19 +273,17 @@ void *rtd_player_data_pt(void *threadarg) {
   void *tail_loc;
   bool junk_tcpheader = true;
 
-
-
-
+  char *dataz;
   int count;
   long long unsigned int i = 0;
   long long unsigned int frames, wcount;
   int imod = 10;
 
-  char *dataz;
   struct tm ct;
   struct timeval start, now, then;
 
   FILE *fp;
+  struct stat fstat;
 
   if (arg.o.debug) { printf("File %s thread init.\n", arg.infile); fflush(stdout); }
 
@@ -297,6 +293,7 @@ void *rtd_player_data_pt(void *threadarg) {
     *arg.running = false;
     arg.retval = EXIT_FAILURE; pthread_exit((void *) &arg.retval);
   } 
+  stat(arg.infile,&fstat);
 
   dataz = malloc(arg.o.acqsize);
 
@@ -375,19 +372,19 @@ void *rtd_player_data_pt(void *threadarg) {
 
 	if(arg.o.debug){ printf("**\ntail %i loc:%p\n**\n",packet_hcount, tail_loc); }
 
-	if(junk_tcpheader){
-	  //get diff between start of dataz and where tail was found so we don't move more than warranted
-	  tail_diff = (long int)tail_loc - (long int)dataz;
-	  if(arg.o.debug){ printf("tail diff:\t%li\n",tail_diff); }
+	//	if(junk_tcpheader){
+	//get diff between start of dataz and where tail was found so we don't move more than warranted
+	tail_diff = (long int)tail_loc - (long int)dataz;
+	if(arg.o.debug){ printf("tail diff:\t%li\n",tail_diff); }
 
-	  keep -= ( tail_size + tail_diff );
+	keep -= ( tail_size + tail_diff );
 
-	  if(arg.o.debug) {printf("Copying %li bytes from %p to %p\n",keep,
-				  tail_loc+tail_size, tail_loc); }
-	  memmove(tail_loc, tail_loc+tail_size, keep); 
+	if(arg.o.debug) {printf("Copying %li bytes from %p to %p\n",keep,
+				tail_loc+tail_size, tail_loc); }
+	memmove(tail_loc, tail_loc+tail_size, keep); 
 
-	  oldheader_loc -= tail_size; 	  //We dropped a tail, so we need to update the header location
-	}	
+	oldheader_loc -= tail_size; 	  //We killed the tail string, so we need to update the header location
+	  //	}	
 
       }
 
@@ -404,18 +401,18 @@ void *rtd_player_data_pt(void *threadarg) {
 	if((i-1) % imod == 0) print_tcp_header(tcp_header);
 	
 	//JUNK HEADER RIGHT HERE
-	if(junk_tcpheader){
+	//	if(junk_tcpheader){
 
-	  //get diff between start of dataz and where header was found so we don't move more than is warranted
-	  header_diff = (long int)oldheader_loc - (long int)dataz;
-	  if(arg.o.debug){ printf("header diff:\t%li\n",header_diff); }
+	//get diff between start of dataz and where header was found so we don't move more than is warranted
+	header_diff = (long int)oldheader_loc - (long int)dataz;
+	if(arg.o.debug){ printf("header diff:\t%li\n",header_diff); }
 
-	  keep =  count - header_size - header_diff; //Only deal with bytes that haven't been searched or discarded
+	keep =  count - header_size - header_diff; //Only deal with bytes that haven't been searched or discarded
 
-	  if(arg.o.debug) {printf("Copying %li bytes from %p to %p\n",keep,
-				  oldheader_loc+header_size, oldheader_loc); }
-	  memmove(oldheader_loc, oldheader_loc+header_size, keep); 
-	}	
+	if(arg.o.debug) {printf("Copying %li bytes from %p to %p\n",keep,
+				oldheader_loc+header_size, oldheader_loc); }
+	memmove(oldheader_loc, oldheader_loc+header_size, keep); 
+	  //	}	
 
 	//Now data are moved, and oldheader_loc has no header there!
 	//loop while we can still find a footer immediately followed by a header
@@ -429,28 +426,27 @@ void *rtd_player_data_pt(void *threadarg) {
 	  //	  pack_err = print_tcp_header(tcp_header);
 	
 	  //JUNK HEADER RIGHT HERE
-	  if(junk_tcpheader){
+	  //	  if(junk_tcpheader){
 
-	    header_diff = (long int)header_loc - (long int)oldheader_loc;
+	  header_diff = (long int)header_loc - (long int)oldheader_loc;
 	    
-	    if(arg.o.debug) {printf("header diff:\t%li\n",header_diff); }
+	  if(arg.o.debug) {printf("header diff:\t%li\n",header_diff); }
 
-	    keep = keep -  header_diff - header_size - tail_size; //only keep bytes not searched or discarded
+	  keep = keep -  header_diff - header_size - tail_size; //only keep bytes not searched or discarded
 
-	    if(arg.o.debug){ printf("Keep+totaldiff=\t%li\n",keep+(long int)header_loc-(long int)dataz); }
+	  if(arg.o.debug){ printf("Keep+totaldiff=\t%li\n",keep+(long int)header_loc-(long int)dataz); }
 
-	    //Notice that the following memmove looks at header_loc MINUS tail_size, which is because we want 
-	    //to kill the footer of the TCPIP packet (i.e., {0x07,0x06,0x05,0x04,0x03,0x02,0x01,0x00})
-	    memmove(header_loc-tail_size,header_loc+header_size, keep ); 
-	    if(arg.o.debug){ printf("Kept %li bytes\n",keep); }
-	  }
+	  //Notice that the following memmove looks at header_loc MINUS tail_size, which is because we want 
+	  //to kill the footer of the TCPIP packet (i.e., {0x07,0x06,0x05,0x04,0x03,0x02,0x01,0x00})
+	  memmove(header_loc-tail_size,header_loc+header_size, keep ); 
+	  if(arg.o.debug){ printf("Kept %li bytes\n",keep); }
+	    //	  }
+
 	  oldheader_loc = header_loc;	
-	}
-      
-      
-      
-      }
-    }
+
+	}//while(we can find headers to kill)
+      } //if(oldheader_loc != NULL)
+    } //if(arg.o.tcpdata)
 
     if (arg.o.dt > 0) {
   
@@ -459,12 +455,11 @@ void *rtd_player_data_pt(void *threadarg) {
 
       fifo_write( fifo, dataz, fifo_count );
 
+      //If we missed either a header or a footer, it will get FFTed and make display a little messy
       if ( (  parse_tcp_header(tcp_header, fifo->head, fifo_avail(fifo) ) ) != NULL ) {
-	printf("Missed a tcp header!!!\n");
-      }
+	printf("Missed a tcp header!!!\n"); }
       if( ( memmem(fifo->head, fifo_avail(fifo), tcp_str, tail_size) ) != NULL ){
-	printf("Missed a footer!!!\n");
-      }
+	printf("Missed a footer!!!\n"); }
       
       if( fifo_avail(fifo) > 2*rtdbytes ) {      // Enough to make sure we find a full frame
 
@@ -500,6 +495,8 @@ void *rtd_player_data_pt(void *threadarg) {
 	}
 	else {
 	  fprintf(stderr, "Couldn't find %s in fifo search!!\n", fifo_srch);
+	  fprintf(stderr,"Total bytes read so far:\t%lli\n",wcount);
+	  fprintf(stderr,"Percent of input file read:\t%Lf%%\n",100*(long double)wcount/(long double)fstat.st_size);
 	}
       } 
 	  
