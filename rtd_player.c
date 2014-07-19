@@ -246,6 +246,8 @@ void *rtd_player_data_pt(void *threadarg) {
   arg = *(struct rtd_player_ptargs *) threadarg;
 
   struct simple_fifo *fifo;
+  long int fifo_loc;
+  char *fifo_outbytes;
   char fifo_srch[18];
   if (arg.o.endian) {
     strcpy(fifo_srch, "aDtromtu hoCllge");
@@ -253,25 +255,20 @@ void *rtd_player_data_pt(void *threadarg) {
   else {
     strcpy(fifo_srch,"Dartmouth College");
   }
-  long int fifo_loc;
-  char *fifo_outbytes;
 
   int e = 0;
   int receiving;
   
-  int rtdbytes;
-  double telapsed;
-
   //TCP stuff
-  int packet_hcount = 0;
-  int tail_count = 0;
-  struct tcp_header *tcp_header;
-  int header_size = 40;
-  int tail_size = 8;
+  int tcp_hc = 0; //tcp header count
+  int tcp_tc = 0; //tcp tail count
+  struct tcp_header *tcp_hdr;
+  int tcp_hdrsz = 40;
+  int tcp_tailsz = 8;
   void *oldheader_loc;
   void *header_loc;
   void *tail_loc;
-  bool junk_tcpheader = true;
+  //  bool junk_tcpheader = true;
 
   char *dataz;
   int count;
@@ -279,6 +276,9 @@ void *rtd_player_data_pt(void *threadarg) {
   long long unsigned int frames, wcount;
   int imod = 10;
 
+  //RTD stuff
+  int rtdbytes;
+  double telapsed;
   struct tm ct;
   struct timeval start, now, then;
 
@@ -303,10 +303,10 @@ void *rtd_player_data_pt(void *threadarg) {
   fifo_init(fifo, 4*rtdbytes);  
   fifo_outbytes = malloc(rtdbytes);
   long int fifo_count;
+
+  tcp_hdr = malloc( sizeof(struct tcp_header) );
   char tcp_str[16] = { 0x07, 0x06, 0x05, 0x04, 0x03, 0x02, 0x01, 0x00,
 		       0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07 };
-
-  tcp_header = malloc( sizeof(struct tcp_header) );
 
   frames = count = wcount = 0;
   
@@ -357,7 +357,7 @@ void *rtd_player_data_pt(void *threadarg) {
 
     if( arg.o.tcp_data ){
 
-      packet_hcount = 0;
+      tcp_hc = 0;
       long int tail_diff = 0;
       long int header_diff = 0;
       long int keep = count;
@@ -368,22 +368,22 @@ void *rtd_player_data_pt(void *threadarg) {
       /*In general, reads will finish before we find the tail, so we want to kill them right here*/
       if( (tail_loc != NULL ) && ( oldheader_loc != NULL ) && (tail_loc < oldheader_loc) ){
 
-	tail_count++;
+	tcp_tc++;
 
-	if(arg.o.debug){ printf("**\ntail %i loc:%p\n**\n",packet_hcount, tail_loc); }
+	if(arg.o.debug){ printf("**\ntail %i loc:%p\n**\n",tcp_hc, tail_loc); }
 
 	//	if(junk_tcpheader){
 	//get diff between start of dataz and where tail was found so we don't move more than warranted
 	tail_diff = (long int)tail_loc - (long int)dataz;
 	if(arg.o.debug){ printf("tail diff:\t%li\n",tail_diff); }
 
-	keep -= ( tail_size + tail_diff );
+	keep -= ( tcp_tailsz + tail_diff );
 
 	if(arg.o.debug) {printf("Copying %li bytes from %p to %p\n",keep,
-				tail_loc+tail_size, tail_loc); }
-	memmove(tail_loc, tail_loc+tail_size, keep); 
+				tail_loc+tcp_tailsz, tail_loc); }
+	memmove(tail_loc, tail_loc+tcp_tailsz, keep); 
 
-	oldheader_loc -= tail_size; 	  //We killed the tail string, so we need to update the header location
+	oldheader_loc -= tcp_tailsz; 	  //We killed the tail string, so we need to update the header location
 	  //	}	
 
       }
@@ -391,14 +391,14 @@ void *rtd_player_data_pt(void *threadarg) {
       /*First go, in case dataz starts with a header*/
       //&tcp_str[8] is address for start string
       if( oldheader_loc != NULL ){
-	packet_hcount++;
-	if(arg.o.debug){printf("**\nheader %i loc:%p\n**\n",packet_hcount, oldheader_loc); }
+	tcp_hc++;
+	if(arg.o.debug){printf("**\nheader %i loc:%p\n**\n",tcp_hc, oldheader_loc); }
 	
 
 	//Get tcp packet header data
-	memcpy(tcp_header, oldheader_loc, header_size);
+	memcpy(tcp_hdr, oldheader_loc, tcp_hdrsz);
 	
-	if((i-1) % imod == 0) print_tcp_header(tcp_header);
+	if((i-1) % imod == 0) print_tcp_header(tcp_hdr);
 	
 	//JUNK HEADER RIGHT HERE
 	//	if(junk_tcpheader){
@@ -407,23 +407,23 @@ void *rtd_player_data_pt(void *threadarg) {
 	header_diff = (long int)oldheader_loc - (long int)dataz;
 	if(arg.o.debug){ printf("header diff:\t%li\n",header_diff); }
 
-	keep =  count - header_size - header_diff; //Only deal with bytes that haven't been searched or discarded
+	keep =  count - tcp_hdrsz - header_diff; //Only deal with bytes that haven't been searched or discarded
 
 	if(arg.o.debug) {printf("Copying %li bytes from %p to %p\n",keep,
-				oldheader_loc+header_size, oldheader_loc); }
-	memmove(oldheader_loc, oldheader_loc+header_size, keep); 
+				oldheader_loc+tcp_hdrsz, oldheader_loc); }
+	memmove(oldheader_loc, oldheader_loc+tcp_hdrsz, keep); 
 	  //	}	
 
 	//Now data are moved, and oldheader_loc has no header there!
 	//loop while we can still find a footer immediately followed by a header
 	while( ( keep  > 0 )  &&
-	       ( ( header_loc = parse_tcp_header(tcp_header, oldheader_loc, keep ) )  != NULL ) ){
-	  packet_hcount++;
-	  tail_count++;
+	       ( ( header_loc = parse_tcp_header(tcp_hdr, oldheader_loc, keep ) )  != NULL ) ){
+	  tcp_hc++;
+	  tcp_tc++;
 
-	  //	  printf("**\nheader %i loc:%p\n**\n",packet_hcount,header_loc);
-	  //	  if((i-1) % imod == 0) pack_err = print_tcp_header(tcp_header);
-	  //	  pack_err = print_tcp_header(tcp_header);
+	  //	  printf("**\nheader %i loc:%p\n**\n",tcp_hc,header_loc);
+	  //	  if((i-1) % imod == 0) pack_err = print_tcp_header(tcp_hdr);
+	  //	  pack_err = print_tcp_header(tcp_hdr);
 	
 	  //JUNK HEADER RIGHT HERE
 	  //	  if(junk_tcpheader){
@@ -432,13 +432,13 @@ void *rtd_player_data_pt(void *threadarg) {
 	    
 	  if(arg.o.debug) {printf("header diff:\t%li\n",header_diff); }
 
-	  keep = keep -  header_diff - header_size - tail_size; //only keep bytes not searched or discarded
+	  keep = keep -  header_diff - tcp_hdrsz - tcp_tailsz; //only keep bytes not searched or discarded
 
 	  if(arg.o.debug){ printf("Keep+totaldiff=\t%li\n",keep+(long int)header_loc-(long int)dataz); }
 
-	  //Notice that the following memmove looks at header_loc MINUS tail_size, which is because we want 
+	  //Notice that the following memmove looks at header_loc MINUS tcp_tailsz, which is because we want 
 	  //to kill the footer of the TCPIP packet (i.e., {0x07,0x06,0x05,0x04,0x03,0x02,0x01,0x00})
-	  memmove(header_loc-tail_size,header_loc+header_size, keep ); 
+	  memmove(header_loc-tcp_tailsz,header_loc+tcp_hdrsz, keep ); 
 	  if(arg.o.debug){ printf("Kept %li bytes\n",keep); }
 	    //	  }
 
@@ -450,56 +450,69 @@ void *rtd_player_data_pt(void *threadarg) {
 
     if (arg.o.dt > 0) {
   
-      fifo_count = count - tail_count * tail_size - packet_hcount * header_size;
+      if(arg.o.tcp_data) { fifo_count = count - tcp_tc * tcp_tailsz - tcp_hc * tcp_hdrsz;}
+      else { fifo_count = count; }
       // Copy into RTD memory if we're running the display
 
       fifo_write( fifo, dataz, fifo_count );
 
       //If we missed either a header or a footer, it will get FFTed and make display a little messy
-      if ( (  parse_tcp_header(tcp_header, fifo->head, fifo_avail(fifo) ) ) != NULL ) {
-	printf("Missed a tcp header!!!\n"); }
-      if( ( memmem(fifo->head, fifo_avail(fifo), tcp_str, tail_size) ) != NULL ){
-	printf("Missed a footer!!!\n"); }
-      
-      if( fifo_avail(fifo) > 2*rtdbytes ) {      // Enough to make sure we find a full frame
+      if(arg.o.tcp_data){
+	if ( (  parse_tcp_header(tcp_hdr, fifo->head, fifo_avail(fifo) ) ) != NULL ) {
+	  printf("Missed a tcp header!!!\n"); }
+	if( ( memmem(fifo->head, fifo_avail(fifo), tcp_str, tcp_tailsz) ) != NULL ){
+	  printf("Missed a footer!!!\n"); }
+      }
 
-	if ( (fifo_loc = fifo_search(fifo, fifo_srch, 2*rtdbytes) ) != EXIT_FAILURE ) {
+      if( !arg.o.digitizer_data ) {// Enough to make sure we find a full frame
 
-	  /* if(arg.o.tcp_data){ */
-	  /* //Junk all TCP packet headers */
-	  /*   packet_hcount = 0; */
-	  /*   oldskip_loc = fifo_loc; */
-	  /*   while( ( skip_loc = fifo_skip(skip_str, 8, oldskip_loc, 36,  */
-	  /* 				  rtdbytes - (oldskip_loc - fifo_loc), fifo) ) != EXIT_FAILURE ) { */
-	  /*     packet_hcount++; */
-	  /*     oldskip_loc = skip_loc; */
-	  /*   } */
-	  /*   //	    if( i % imod == 0 ) { */
-	  /*     printf("Killed %i packet headers\n", packet_hcount); */
-	  /*     //	    } */
-	  /* } */
+	if( fifo_avail(fifo) > 2*rtdbytes ){ 
+	  if ( (fifo_loc = fifo_search(fifo, fifo_srch, 2*rtdbytes) ) != EXIT_FAILURE ){
 
-	  //	  fifo_loc = oldskip_loc;
+	    /* if(arg.o.tcp_data){ */
+	    /* //Junk all TCP packet headers */
+	    /*   tcp_hc = 0; */
+	    /*   oldskip_loc = fifo_loc; */
+	    /*   while( ( skip_loc = fifo_skip(skip_str, 8, oldskip_loc, 36,  */
+	    /* 				  rtdbytes - (oldskip_loc - fifo_loc), fifo) ) != EXIT_FAILURE ) { */
+	    /*     tcp_hc++; */
+	    /*     oldskip_loc = skip_loc; */
+	    /*   } */
+	    /*   //	    if( i % imod == 0 ) { */
+	    /*     printf("Killed %i packet headers\n", tcp_hc); */
+	    /*     //	    } */
+	    /* } */
 
-	  //Junk everything in FIFO before new Dartmouth header
-	  fifo_kill(fifo, fifo_loc);
+	    //	  fifo_loc = oldskip_loc;
 
-	  fifo_read(fifo_outbytes, fifo, rtdbytes);
-	  pthread_mutex_lock(arg.rlock);
-	  if (arg.o.debug) {
-	    printf("file %s rtd moving rtdbytes %i from cfb %p to rtdb %p with %u avail.\n",
-		   arg.infile, rtdbytes, dataz, arg.rtdframe, count);
+	    //Junk everything in FIFO before new Dartmouth header
+	    fifo_kill(fifo, fifo_loc);
+	
+	    fifo_read(fifo_outbytes, fifo, rtdbytes);
+	    pthread_mutex_lock(arg.rlock);
+	    if (arg.o.debug) {
+	      printf("file %s rtd moving rtdbytes %i from cfb %p to rtdb %p with %u avail.\n",
+		     arg.infile, rtdbytes, dataz, arg.rtdframe, count);
+	    }
+	    memmove(arg.rtdframe, fifo_outbytes, rtdbytes);
+	    pthread_mutex_unlock(arg.rlock);
 	  }
-	  memmove(arg.rtdframe, fifo_outbytes, rtdbytes);
-	  pthread_mutex_unlock(arg.rlock);
+	  else {
+	    fprintf(stderr, "Couldn't find %s in fifo search!!\n", fifo_srch);
+	    fprintf(stderr,"Total bytes read so far:\t%lli\n",wcount);
+	    fprintf(stderr,"Percent of input file read:\t%Lf%%\n",100*(long double)wcount/(long double)fstat.st_size);
+	  }
+	} 
+      } else { //it IS digitizer data!
+	fifo_read(fifo_outbytes, fifo, rtdbytes);
+	pthread_mutex_lock(arg.rlock);
+	if (arg.o.debug) {
+	  printf("file %s rtd moving rtdbytes %i from cfb %p to rtdb %p with %u avail.\n",
+		 arg.infile, rtdbytes, dataz, arg.rtdframe, count);
 	}
-	else {
-	  fprintf(stderr, "Couldn't find %s in fifo search!!\n", fifo_srch);
-	  fprintf(stderr,"Total bytes read so far:\t%lli\n",wcount);
-	  fprintf(stderr,"Percent of input file read:\t%Lf%%\n",100*(long double)wcount/(long double)fstat.st_size);
-	}
-      } 
-	  
+	memmove(arg.rtdframe, fifo_outbytes, rtdbytes);
+	pthread_mutex_unlock(arg.rlock);
+      }	  
     }
 	
     frames++;
