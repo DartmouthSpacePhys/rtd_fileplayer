@@ -7,12 +7,13 @@
  *
  */
 
+#define _GNU_SOURCE
+
 #include <inttypes.h>
 #include <stdio.h>
 #include <unistd.h>
 #include <stdlib.h>
 #include <string.h>
-#include <syslog.h>
 #include <stdarg.h>
 #include <time.h>
 
@@ -28,60 +29,17 @@ void printe(char *format, ...) {
 	va_end(args);
 }
 
-/* void rtd_log(char *format, ...) { */
-/* 	static FILE *log = NULL; */
-/*     static bool init = true; */
-/* 	static time_t start_time; */
-/* 	char ostr[1024]; */
-/* 	struct tm ct; */
-/* 	va_list args, iarg; */
-
-/*     va_start(args, format); */
-
-/*     if (init) { */
-/*     	// First run.  Initialize logs. */
-
-/* 		va_copy(iarg, args); */
-
-/* 		printf("Logging to");fflush(stdout); */
-
-/* 		openlog("rtd_player", LOG_CONS|LOG_NDELAY, LOG_LOCAL7); */
-/* 		printf(" syslog");fflush(stdout); */
-
-/* 		start_time = va_arg(iarg, time_t); */
-/* 		gmtime_r(&start_time, &ct); */
-/* 		sprintf(ostr, "%s-%04i%02i%02i-%02i%02i%02i-epp.log", format, */
-/* 				ct.tm_year+1900, ct.tm_mon+1, ct.tm_mday, ct.tm_hour, ct.tm_min, ct.tm_sec); */
-/* 		log = fopen(ostr, "a+"); */
-/* 		if (log == NULL) { */
-/* 			syslog(LOG_ERR, "[T+%li] Opening log file '%s' failed!", time(NULL)-start_time, ostr); */
-/* 			fprintf(stderr, "Opening log file '%s' failed!\n", ostr); */
-/* 		} else { */
-/* 			printf(" and %s", ostr); fflush(stdout); */
-/* 			fprintf(log, "Logging to syslog and %s started.\n", ostr); fflush(log); */
-/* 		} */
-/* 		printf(" started.\n"); fflush(stdout); */
-
-/* 		init = false; */
-/*     } */
-/*     else { */
-/* 		vsprintf(ostr, format, args); */
-/* 		syslog(LOG_ERR, "[T+%li] %s", time(NULL)-start_time, ostr); */
-
-/* 		if (log != NULL) fprintf(log, "[rtd_player T+%li] %s\n", time(NULL)-start_time, ostr);fflush(log); */
-/*     } */
-/* 	va_end(args); */
-/* } */
-
 void init_opt(struct player_opt *o) {
   memset(o, 0, sizeof(struct player_opt));
   o->acqsize = DEF_ACQSIZE;
-  memset(o->infiles, 0, sizeof(char) * MAXINFILES*50); o->infiles[0] = "";
+  //  memset(o->infiles, 0, sizeof(char) * MAXINFILES*50); o->infiles[0] = "";
+  o->infiles[0] = "";
   o->num_files = 1;
   o->oldsport = false;
-  o->prefix = DEF_PREFIX;
-  o->outdir = DEF_OUTDIR;
-  
+
+  o->digitizer_data = DEF_DIGITDATA;
+  o->tcp_data = DEF_TCPDATA;
+  o->endian = DEF_ENDIANNESS;
   o->rtdsize = DEF_RTDSIZE;
   o->rtdfile = DEF_RTDFILE;
   o->dt = DEF_RTD_DT;
@@ -98,7 +56,7 @@ int parse_opt(struct player_opt *options, int argc, char **argv) {
   char *pn;
   int c, i = 0;
   
-  while (-1 != (c = getopt(argc, argv, "A:x:f:o:OP:S:C:R:m:rd:a:XvVh"))) {
+  while (-1 != (c = getopt(argc, argv, "A:x:f:S:C:gtER:m:rd:a:XvVh"))) {
     switch (c) {
     case 'A':
       options->acqsize = strtoul(optarg, NULL, 0);
@@ -117,15 +75,17 @@ int parse_opt(struct player_opt *options, int argc, char **argv) {
       for (j = 0; j <= i; j++) {
 	options->infiles[j] = infiles[j];
 	options->num_files = i+1;
-	printf("Now we gots %i: %s\n",j,infiles[j]);
+	//	printf("And now we have %i: %s\n",j,infiles[j]);
       }
       break;
-    case 'P':
-      options->prefix = optarg;
+    case 'g':
+      options->digitizer_data = true;
+      options->rtdfile = "/tmp/rtd/latest_acquisition.data";
+    case 't':
+      options->tcp_data = true;
+    case 'E':
+      options->endian = true;
       break;
-    case 'o':
-      options->outdir = optarg;
-      break;      
     case 'R':
       options->rtdsize = strtoul(optarg, NULL, 0);
       break;
@@ -152,9 +112,11 @@ int parse_opt(struct player_opt *options, int argc, char **argv) {
       printf("\t-f <#>\tFile(s) to 'acquire' from (see below) [1].\n");
       printf("\t\tCan either give a single file, or a comma-separated list.\n");
       printf("\t\ti.e., \"this.data,that.data\", \"/path/to/my.data\"\n");
-      printf("\t-P <s>\tSet output filename prefix [%s].\n", DEF_PREFIX);
-      printf("\t-o <s>\tSet output directory [%s].\n", DEF_OUTDIR);
       printf("\n");
+      printf("\t-g Digitizer data (Real data, excludes search for Dartmouth headers) [Default: %i]\n", DEF_DIGITDATA);
+      printf("\t-t Wallops TCP/IP data (removes TCP packet headers from RTD data) [Default: %i]\n", DEF_TCPDATA);
+      printf("\t-E Switch endianness of \"Dartmouth\" search for RTD output [Default: %i]\n",DEF_ENDIANNESS);
+      printf("\t\t(FSCC-LVDS data needs this disabled, but TCP data needs it enabled)\n");
       printf("\t-R <#>\tReal-time display output size (in words) [%i].\n", DEF_RTDSIZE);
       printf("\t-m <s>\tReal-time display file [%s].\n", DEF_RTDFILE);
       printf("\t-d <#>\tReal-time display output period [%i].\n", DEF_RTD_DT);
@@ -167,7 +129,7 @@ int parse_opt(struct player_opt *options, int argc, char **argv) {
     }
     
   }
-  
+
   return argc;
 }
 
@@ -181,4 +143,71 @@ int int_cmp(const void *a, const void *b)
      and positive if a > b */
 }
 
+/* This one is for pulling in PCM data, the structure of which 
+ * (at least for a single synchronous PCM channel coming from the DEWESoft 
+ * NET interface at Wallops) is as follows:
+ * 
+ * Bytes 0-7:  Start packet string: { 0x00, 0x01, 0x02, 0x03, /
+ *                                   0x04, 0x05, 0x06, 0x07 }
+ * Bytes 8-11: (32-bit int) Packet size in bytes without stop and start string
+ * Bytes 12-15: (32-bit int) Packet type (always zero for data packets)
+ * Bytes 16-19: (32-bit int) Number of synchronous samples per channel
+ * Bytes 20-27: (64-bit int) Number of samples acquired so far
+ * Bytes 28-35: (Double floating point) Absolute/relative time
+ *              (# days since 12/30/1899 | number of days since start of acq)
+ * 
+ * *Total header offset is 36 bytes*
+ *
+ * Bytes 36-39: Number of samples
+ * Bytes 40-(# of samples * sample data type, which should be two-byte unsigned words): Data
+ */
+/* struct tcp_header { */
+/*   char start_str[8]; */
+/*   uint32_t pack_sz; //in bytes */
+/*   uint32_t pack_numsamps; //number of synchronous samples per channel  */
+/*                           //(there should only be one channel) */
+/*   uint64_t pack_totalsamps; //number of samples acquired so far */
+/*   double pack_time; // as given above */
+/* }; */
 
+
+void *parse_tcp_header(struct tcp_header *header, char *search_bytes, size_t search_length) {
+
+  //  printf("tcp_header is %li bytes large\n", sizeof(struct tcp_header) );
+
+  int header_length = 40;
+
+  char skip_str[16] = { 0x07, 0x06, 0x05, 0x04, 0x03, 0x02, 0x01, 0x00, 
+  			0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07 };  
+
+  //  char start_str[8] = { 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07 };
+
+  void *check_addr = memmem(search_bytes, search_length, skip_str, 16);
+
+  if( check_addr != NULL ){
+    memcpy(header, check_addr+8, header_length);
+    return check_addr + 8;
+  }
+  /* else { */
+  /*   printf("check_addr is NULL\n"); */
+  /* } */
+
+  //Return location of header, not footer that comes 8 bytes before it--that is, add 8.
+  return check_addr;
+}
+
+int print_tcp_header(struct tcp_header *header){
+
+  printf("TCP header start string =\t\t");
+  for (int i = 0; i < 8; i ++){
+    printf("%x",header->start_str[i]);
+  }
+  printf("\n");
+  printf("Packet size:\t\t%"PRIu32"\n", header->pack_sz);
+  printf("Packet type:\t\t%"PRIu32"\n", header->pack_type);
+  printf("Packet number of samples:\t%"PRIu32"\n", header->pack_numsamps);
+  printf("Total samples sent so far:\t%"PRIu64"\n", header->pack_totalsamps);
+  printf("Packet time:\t\t%f\n", header->pack_time);
+  printf("Sync channel num samples:\t%"PRIu32"\n", header->sync_numsamps);
+  return EXIT_SUCCESS;
+}

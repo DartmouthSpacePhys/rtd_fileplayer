@@ -19,9 +19,10 @@ struct player_opt {
   char *infiles[MAXINFILES];
   int num_files;
   bool oldsport;
-  char *prefix;
-  char *outdir;
   
+  bool digitizer_data;
+  bool tcp_data;
+  bool endian;
   int rtdsize;
   char *rtdfile;
   double dt;
@@ -67,6 +68,56 @@ struct header_info {
   time_t start_time;
   struct timeval start_timeval;
   float code_version;
+};
+
+struct prtd_header_info {
+	char site_id[12];
+	int num_channels;
+	char channel_flags;
+	unsigned int num_samples;
+	unsigned int num_read;
+	float sample_frequency;
+	float time_between_acquisitions;
+	int byte_packing;
+	time_t start_time;
+	struct timeval start_timeval;
+	float code_version;
+};
+
+union rtd_h_union {
+  struct header_info cprtd;
+  struct prtd_header_info prtd;
+};
+
+/* This one is for pulling in PCM data, the structure of which 
+ * (at least for a single synchronous PCM channel coming from the DEWESoft 
+ * NET interface at Wallops) is as follows:
+ * 
+ * Bytes 0-7:  Start packet string: { 0x00, 0x01, 0x02, 0x03, /
+ *                                   0x04, 0x05, 0x06, 0x07 }
+ * Bytes 8-11: (32-bit int) Packet size in bytes without stop and start string
+ * Bytes 12-15: (32-bit int) Packet type (always zero for data packets)
+ * Bytes 16-19: (32-bit int) Number of synchronous samples per channel
+ * Bytes 20-27: (64-bit int) Number of samples acquired so far
+ * Bytes 28-35: (Double floating point) Absolute/relative time
+ *              (# days since 12/30/1899 | number of days since start of acq)
+ * 
+ * *Total header offset is 36 bytes*
+ *
+ * Bytes 36-39: Number of samples (for synchronous channels only)
+ * Bytes 40-(# of samples * sample data type, which should be two-byte unsigned words): Data
+ */
+struct tcp_header {
+  char start_str[8];
+  uint32_t pack_sz; //in bytes
+  uint32_t pack_type;
+  uint32_t pack_numsamps; //number of synchronous samples per channel 
+                          //(there should only be one channel)
+  uint64_t pack_totalsamps; //number of samples acquired so far
+  double pack_time; // as given above
+
+  uint32_t sync_numsamps;
+
 };
 
 /*

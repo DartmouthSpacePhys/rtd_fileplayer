@@ -20,7 +20,8 @@ void open_cap(int);
 void strfifo(char *, short *, int);
 void init_opt(struct player_opt *);
 int parse_opt(struct player_opt *, int, char **);
-void rtd_log(char *, ...);
 void printe(char *, ...);
+void *parse_tcp_header(struct tcp_header *, char *, size_t);
+int print_tcp_header(struct tcp_header*);
 
 #endif /* EPP_HELPERS_H_ */

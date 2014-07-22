@@ -3,6 +3,16 @@
 
 # object files
 *.o
+<<<<<<< HEAD
 
 # Executable
 rtd_player
+=======
+rtd_player
+
+# biz
+*~
+
+# data
+*.data
+>>>>>>> fifo_additions
