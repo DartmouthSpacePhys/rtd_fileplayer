@@ -70,6 +70,25 @@ struct header_info {
   float code_version;
 };
 
+struct prtd_header_info {
+	char site_id[12];
+	int num_channels;
+	char channel_flags;
+	unsigned int num_samples;
+	unsigned int num_read;
+	float sample_frequency;
+	float time_between_acquisitions;
+	int byte_packing;
+	time_t start_time;
+	struct timeval start_timeval;
+	float code_version;
+};
+
+union rtd_h_union {
+  struct header_info cprtd;
+  struct prtd_header_info prtd;
+};
+
 /* This one is for pulling in PCM data, the structure of which 
  * (at least for a single synchronous PCM channel coming from the DEWESoft 
  * NET interface at Wallops) is as follows:

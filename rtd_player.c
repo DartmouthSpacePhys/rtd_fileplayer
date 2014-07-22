@@ -46,7 +46,7 @@ int main(int argc, char **argv)
   if ( o.infiles[0] && o.infiles[0][0] == '\0' ) {
       fprintf(stderr,"No input file provided. Use option -f on command line, or -h to see options.\n");
       exit(EXIT_FAILURE);
-    }
+  }
 
 
   signal(SIGINT, do_depart);
@@ -64,7 +64,10 @@ void rtd_play(struct player_opt o) {
   //	pthread_t rtd_thread;
     
   short int **rtdframe, *rtdout = NULL;
-  struct header_info header;
+  
+  union rtd_h_union rtdh;
+  //  struct header_info header;
+  //  struct prtd_header_info prtd_header;
   int rfd, active_threads = 0;
   char *rmap = NULL;
   struct stat sb;
@@ -74,9 +77,8 @@ void rtd_play(struct player_opt o) {
 
   pg_time = time(NULL);
 
-
   data_threads = malloc(o.num_files * sizeof(pthread_t));
-  printf("o.num_files is currently %i\n",o.num_files);
+  //  printf("o.num_files is currently %i\n",o.num_files);
   rtdlocks = malloc(o.num_files * sizeof(pthread_mutex_t));
   thread_args = malloc(o.num_files * sizeof(struct rtd_player_ptargs));
   rtdframe = malloc(o.num_files * sizeof(short int *));
@@ -88,8 +90,8 @@ void rtd_play(struct player_opt o) {
     if (rtdsize > 2*o.acqsize) printf("RTD Total Size too big!\n");
     else printf(" (%i", o.rtdsize);
     if (1024*o.rtdavg > rtdsize) printf("Too many averages for given RTD size.\n");
-    else printf("/%iavg)", o.rtdavg);
-    printf("...");
+    else printf("/%i avg)", o.rtdavg);
+    printf("...\n");
     
     rtdout = malloc(o.num_files * rtdsize);
     
@@ -114,7 +116,13 @@ void rtd_play(struct player_opt o) {
     if ((fstat(rfd, &sb) == -1) || (!S_ISREG(sb.st_mode))) {
       printe("Improper rtd file.\n"); return;
     }
-    int mapsize = o.num_files*rtdsize + 100;
+    int mapsize;
+    if(o.digitizer_data) {
+      mapsize = o.num_files*rtdsize + 72;
+    }
+    else {
+      mapsize = o.num_files*rtdsize + 100;
+    }
     char *zeroes = malloc(mapsize);
     memset(zeroes, 0, mapsize);
     ret = write(rfd, zeroes, mapsize);
@@ -130,17 +138,29 @@ void rtd_play(struct player_opt o) {
     /*
      * Set up basic RTD header
      */
-    header.num_read = o.rtdsize*o.num_files;
-    sprintf(header.site_id,"%s","RxDSP Woot?");
-    header.hkey = 0xF00FABBA;
-    header.num_channels=o.num_files;
-    header.channel_flags=0x0F;
-    header.num_samples=o.rtdsize;
-//!!! DOES THIS NEED TO BE CHANGED TO 960000?
-    header.sample_frequency=960000;
-    header.time_between_acquisitions=o.dt;
-    header.byte_packing=0;
-    header.code_version=0.1;
+    if(!o.digitizer_data){
+      rtdh.cprtd.num_read = o.rtdsize*o.num_files;
+      sprintf(rtdh.cprtd.site_id,"%s","RxDSP Woot?");
+      rtdh.cprtd.hkey = 0xF00FABBA;
+      rtdh.cprtd.num_channels=o.num_files;
+      rtdh.cprtd.channel_flags=0x0F;
+      rtdh.cprtd.num_samples=o.rtdsize;
+      rtdh.cprtd.sample_frequency=960000;
+      rtdh.cprtd.time_between_acquisitions=o.dt;
+      rtdh.cprtd.byte_packing=0;
+      rtdh.cprtd.code_version=0.1;
+    }
+    else {
+      rtdh.prtd.num_read = o.rtdsize*o.num_files;
+      sprintf(rtdh.prtd.site_id,"%s","RxDSP Woot?");
+      rtdh.prtd.num_channels=o.num_files;
+      rtdh.prtd.channel_flags=0x0F;
+      rtdh.prtd.num_samples=o.rtdsize;
+      rtdh.prtd.sample_frequency=960000;
+      rtdh.prtd.time_between_acquisitions=o.dt;
+      rtdh.prtd.byte_packing=0;
+      rtdh.prtd.code_version=0.1;
+    }
   }
     
   /*
@@ -154,7 +174,7 @@ void rtd_play(struct player_opt o) {
     }
     
 
-    printf("file %s...", o.infiles[i]); fflush(stdout);
+    printf("file %s...\n", o.infiles[i]); fflush(stdout);
     thread_args[i].o = o;
     thread_args[i].retval = 0;
     thread_args[i].running = &running;
@@ -169,9 +189,16 @@ void rtd_play(struct player_opt o) {
     } else active_threads++;
   }
   
-  if (o.debug) printf("Size of header: %li, rtdsize: %i, o.num_files: %i.\n", sizeof(header), rtdsize, o.num_files);
-
-
+  if (o.debug) {
+    if (!o.digitizer_data){
+      printf("Size of header: %lu, rtdsize: %i, o.num_files: %i.\n", 
+	     sizeof( struct header_info ), rtdsize, o.num_files);
+    }
+    else {
+      printf("Size of header: %lu, rtdsize: %i, o.num_files: %i.\n", 
+	     sizeof( struct prtd_header_info ), rtdsize, o.num_files);
+    }
+  }
   /*
    * Now we sit back and update RTD data until all files quit reading.
    */
@@ -191,13 +218,23 @@ void rtd_play(struct player_opt o) {
 	  pthread_mutex_unlock(&rtdlocks[i]);
 	}
 
-	header.start_time = time(NULL);
-	header.start_timeval = now;
-	header.averages = o.rtdavg;
+	if(!o.digitizer_data){
+	  rtdh.cprtd.start_time = time(NULL);
+	  rtdh.cprtd.start_timeval = now;
+	  rtdh.cprtd.averages = o.rtdavg;
 
-	memmove(rmap, &header, sizeof(struct header_info));
-	memmove(rmap+102, rtdout, rtdsize*o.num_files);
+	  memmove(rmap, &rtdh.cprtd, sizeof(struct header_info));
+	  memmove(rmap+102, rtdout, rtdsize*o.num_files);
+	}
+	else {
+	  rtdh.prtd.start_time = time(NULL);
+	  rtdh.prtd.start_timeval = now;
 
+	  //	  printf("Size of prtd_header_info:\t%lu\n",sizeof(struct prtd_header_info));
+	  //	  printf("Size of header_info:\t%lu\n",sizeof(struct header_info));
+	  memmove(rmap, &rtdh.prtd, sizeof(struct prtd_header_info));
+	  memmove(rmap+74, rtdout, rtdsize*o.num_files);
+	}
 	then = now;
       }
 
@@ -315,7 +352,7 @@ void *rtd_player_data_pt(void *threadarg) {
   then = start;
    
   //!!!Make sleeptime some sort of command-line arg
-  printf("Sleeping %i us.\n", 10000);
+  if(arg.o.debug) printf("Sleeping %i us.\n", 100000);
   
   /*
    * Main data loop
@@ -323,11 +360,11 @@ void *rtd_player_data_pt(void *threadarg) {
   receiving = 1;
 
   while ( *arg.running ) {
-    if (arg.o.debug) { printf("Serial file %s debug.\n", arg.infile); fflush(stdout); }
+    if (arg.o.debug) { printf("File %s debug.\n", arg.infile); fflush(stdout); }
 
     //    usleep(sleeptime);
       
-    if (arg.o.debug) { printf("Serial file %s read data.\n", arg.infile); fflush(stdout); }
+    if (arg.o.debug) { printf("File %s read data.\n", arg.infile); fflush(stdout); }
     
     memset(dataz, 0, arg.o.acqsize);
     if (receiving) {
@@ -500,7 +537,8 @@ void *rtd_player_data_pt(void *threadarg) {
 	  else {
 	    fprintf(stderr, "Couldn't find %s in fifo search!!\n", fifo_srch);
 	    fprintf(stderr,"Total bytes read so far:\t%lli\n",wcount);
-	    fprintf(stderr,"Percent of input file read:\t%Lf%%\n",100*(long double)wcount/(long double)fstat.st_size);
+	    fprintf(stderr,"Percent of input file read:\t%Lf%%\n",
+		    100*(long double)wcount/(long double)fstat.st_size);
 	  }
 	} 
       } else { //it IS digitizer data!

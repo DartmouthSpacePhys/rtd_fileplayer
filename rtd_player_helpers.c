@@ -75,11 +75,12 @@ int parse_opt(struct player_opt *options, int argc, char **argv) {
       for (j = 0; j <= i; j++) {
 	options->infiles[j] = infiles[j];
 	options->num_files = i+1;
-	printf("Now we gots %i: %s\n",j,infiles[j]);
+	//	printf("And now we have %i: %s\n",j,infiles[j]);
       }
       break;
     case 'g':
       options->digitizer_data = true;
+      options->rtdfile = "/tmp/rtd/latest_acquisition.data";
     case 't':
       options->tcp_data = true;
     case 'E':
