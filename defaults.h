@@ -22,7 +22,7 @@
 #define DEF_TCPDATA false
 #define DEF_ENDIANNESS false
 #define DEF_RTDSIZE 65536 // RTD Output size, words
-#define DEF_RTDFILE "/tmp/rtd/rtd.data"
+#define DEF_RTDFILE "/tmp/rtd/rtd_fileplayer.data"
 #define DEF_RTD_DT 0 // No RTD by default
 #define DEF_RTDAVG 12
 
