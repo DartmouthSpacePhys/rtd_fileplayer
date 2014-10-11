@@ -20,7 +20,7 @@ which can occasionally create odd features in processed spectrograms--generally 
 Playing back digitized data with "-g"
 ------------------------------------
 If you want to inspect a digitized file, it's important to note that the rate at which the digitized data was originally acquired is important. If, for example, the data were acquired at a 20kHz sample rate, 
-you might consider setting the RTD outputsize to 4096 and the acquisition size to 8192. This also changes the rtd monitor file to "/tmp/rtd/latest_acquisition.data" so that prtd can process the data.
+you might consider setting the RTD outputsize to 4096 and the acquisition size to 8192. 
 
 Endianness issues
 -----------------
