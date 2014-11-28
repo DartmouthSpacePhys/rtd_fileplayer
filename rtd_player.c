@@ -103,6 +103,10 @@ void rtd_play(struct player_opt o) {
       rtdframe[i] = malloc(rtdsize);
     }
     
+    if( o.digitizer_data)
+      printf("DIGITIZER DATA\n");
+    if( o.tcp_data )
+      printf("TCP DATA\n");
     /*
      * Create/truncate the real-time display file, fill it
      * with zeros to the desired size, then mmap it.

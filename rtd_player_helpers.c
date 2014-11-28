@@ -81,8 +81,10 @@ int parse_opt(struct player_opt *options, int argc, char **argv) {
     case 'g':
       options->digitizer_data = true;
       //      options->rtdfile = "/tmp/rtd/rtd.data";
+      break;
     case 't':
       options->tcp_data = true;
+      break;
     case 'E':
       options->endian = true;
       break;
